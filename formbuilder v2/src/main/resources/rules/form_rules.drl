@@ -1,0 +1,9 @@
+// Drools base rules file
+// Individual form rules are compiled dynamically from the database by DroolsRuleService
+// This file must exist on the classpath for KieContainer to build successfully
+
+package com.sttl.formbuilder.rules;
+
+import com.sttl.formbuilder.model.SubmissionFact;
+
+// No static rules here — all rules are database-driven and loaded at runtime

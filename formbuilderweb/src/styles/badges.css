@@ -1,0 +1,75 @@
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: var(--border-radius-full);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.85;
+}
+
+.badge-draft {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.badge-published {
+    background: var(--color-success-light);
+    color: #065f46;
+}
+
+.badge-required {
+    background: var(--color-danger-light);
+    color: var(--color-danger);
+}
+
+.badge-optional {
+    background: #f1f5f9;
+    color: var(--text-secondary);
+}
+
+.badge-primary {
+    background: var(--color-primary-light);
+    color: var(--color-primary);
+}
+
+.badge-danger {
+    background: var(--color-danger-light);
+    color: var(--color-danger);
+}
+
+.badge-success {
+    background: var(--color-success-light);
+    color: var(--color-success-dark);
+}
+
+.badge-neutral {
+    background: #f1f5f9;
+    color: var(--text-secondary);
+}
+
+.badge-type {
+    background: #f0f9ff;
+    color: #0369a1;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+}
+
+/* Lock icon for published */
+.lock-icon {
+    display: inline-flex;
+    align-items: center;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}

@@ -1,0 +1,175 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  /* Main Theme Variables */
+  --theme-primary: #3b82f6;
+  --theme-secondary: #64748b;
+  --theme-tertiary: #10b981;
+  
+  --bg-primary: #f5f6fa;
+  --bg-secondary: #ffffff;
+  --bg-sidebar: #ffffff;
+  --bg-sidebar-hover: #f1f5f9;
+  --bg-sidebar-active: var(--theme-primary);
+
+  --color-primary: var(--theme-primary);
+  --color-primary-dark: #2563eb;
+  --color-primary-light: #eff6ff;
+
+  --color-secondary: var(--theme-secondary);
+  --color-secondary-dark: #475569;
+  --color-secondary-light: #f1f5f9;
+
+  --color-tertiary: var(--theme-tertiary);
+  --color-tertiary-dark: #059669;
+  --color-tertiary-light: #ecfdf5;
+
+  --color-danger: #ef4444;
+  --color-danger-dark: #dc2626;
+  --color-warning: #f59e0b;
+  --color-warning-dark: #d97706;
+  --color-success: var(--theme-tertiary);
+
+  --text-primary: #0f172a;
+  --text-secondary: var(--theme-secondary);
+  --text-muted: #94a3b8;
+  --text-white: #ffffff;
+  --text-sidebar: #64748b;
+  --text-sidebar-active: #0f172a;
+
+  --border-color: #cbd5e1;
+  
+  /* GF mappings (Light) */
+  --gf-bg: var(--bg-primary);
+  --gf-surface: var(--bg-secondary);
+  --gf-purple: var(--theme-primary);
+  --gf-purple-light: var(--color-primary-light);
+  --gf-border: var(--border-color);
+  --gf-text: var(--text-primary);
+  --gf-text-secondary: var(--text-secondary);
+
+  --color-danger-light: #fef2f2;
+  --color-success-light: #f0fdf4;
+  --color-warning-light: #fffbeb;
+  --color-primary-light: #eff6ff;
+
+  /* Shared Properties */
+  --border-radius: 12px;
+  --border-radius-lg: 16px;
+  --border-radius-xl: 20px;
+  --sidebar-width: 260px;
+  --sidebar-collapsed-width: 80px;
+  --topbar-height: 64px;
+  --transition: 0.2s ease;
+  --transition-slow: 0.4s ease;
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* Dark Mode Overrides */
+[data-theme='dark'] {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-sidebar: #020617;
+  --bg-sidebar-hover: #0f172a;
+  
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #64748b;
+  
+  --text-sidebar: #cbd5e1;
+  --text-sidebar-active: #ffffff;
+  
+  --border-color: #475569;
+  --color-danger-light: rgba(239, 68, 68, 0.15);
+  --color-success-light: rgba(16, 185, 129, 0.15);
+  --color-warning-light: rgba(245, 158, 11, 0.15);
+  --color-primary-light: rgba(59, 130, 246, 0.15);
+  --color-secondary-light: rgba(148, 163, 184, 0.15);
+  --color-tertiary-light: rgba(16, 185, 129, 0.15);
+
+  /* GF mappings (Dark) */
+  --gf-bg: var(--bg-primary);
+  --gf-surface: var(--bg-secondary);
+  --gf-purple: var(--theme-primary);
+  --gf-purple-light: rgba(59, 130, 246, 0.2);
+  --gf-border: var(--border-color);
+  --gf-text: var(--text-primary);
+  --gf-text-secondary: var(--text-secondary);
+  
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  color-scheme: dark;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 15px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+  transition: color var(--transition);
+}
+
+a:hover {
+  color: var(--color-primary-dark);
+}
+
+ul, ol {
+  list-style: none;
+}
+
+img, svg {
+  display: block;
+  max-width: 100%;
+}
+
+button {
+  cursor: pointer;
+  font-family: var(--font-family);
+}
+
+input, textarea, select {
+  font-family: var(--font-family);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+p {
+  color: var(--text-secondary);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}

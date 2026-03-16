@@ -1,0 +1,154 @@
+package com.sttl.formbuilder.service;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
+
+import com.sttl.formbuilder.util.InputSanitizer;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+
+import com.sttl.formbuilder.entity.FormVersion;
+import com.sttl.formbuilder.entity.FormField;
+import com.sttl.formbuilder.repository.FormFieldRepository;
+import com.sttl.formbuilder.repository.FormVersionRepository;
+import com.sttl.formbuilder.util.SqlTypeMapper;
+
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class SchemaService {
+
+    private final JdbcTemplate jdbcTemplate;
+    private final FormVersionRepository versionRepository;
+    private final FormFieldRepository fieldRepository;
+
+    public SchemaService(JdbcTemplate jdbcTemplate,
+            FormVersionRepository versionRepository,
+            FormFieldRepository fieldRepository) {
+        this.jdbcTemplate = jdbcTemplate;
+        this.versionRepository = versionRepository;
+        this.fieldRepository = fieldRepository;
+    }
+
+    @Transactional
+    public void publishVersion(UUID versionId) {
+        FormVersion version = versionRepository.findById(versionId)
+                .orElseThrow(() -> new RuntimeException("Version not found"));
+
+        List<FormField> fields = fieldRepository.findByVersion_IdOrderByFieldOrder(versionId);
+
+        if (fields.isEmpty()) {
+            throw new RuntimeException("Cannot publish: form has no fields defined");
+        }
+
+        String sanitizedFormName = InputSanitizer.sanitizeTableNamePart(version.getForm().getName());
+        String sanitizedUuid = version.getForm().getId().toString().replace("-", "_");
+        String tableName = ("form_" + sanitizedFormName + "__submission__" + sanitizedUuid).toLowerCase();
+        if (tableName.length() > 63) {
+            tableName = tableName.substring(0, 63);
+        }
+
+        // Check if table exists in public schema
+        String checkTableSql = "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = ? AND table_schema = 'public')";
+        Boolean exists = jdbcTemplate.queryForObject(checkTableSql, Boolean.class, tableName);
+
+        if (Boolean.FALSE.equals(exists)) {
+            StringBuilder sql = new StringBuilder();
+            sql.append("CREATE TABLE \"").append(tableName).append("\" (")
+                    .append("\"id\" BIGSERIAL PRIMARY KEY,")
+                    .append("\"submitted_at\" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,")
+                    .append("\"submitted_by\" UUID REFERENCES users(id),")
+                    .append("\"deleted\" BOOLEAN DEFAULT FALSE,");
+
+            for (FormField field : fields) {
+                if ("HEADING".equalsIgnoreCase(field.getFieldType())
+                        || "PAGE_BREAK".equalsIgnoreCase(field.getFieldType())) {
+                    continue;
+                }
+                String safeKey = field.getFieldKey();
+                String sqlType = SqlTypeMapper.map(field.getFieldType());
+                sql.append("\"").append(safeKey).append("\" ").append(sqlType);
+                if (Boolean.TRUE.equals(field.getIsUnique())) {
+                    sql.append(" UNIQUE");
+                }
+                sql.append(",");
+            }
+            sql.deleteCharAt(sql.length() - 1);
+            sql.append(")");
+            jdbcTemplate.execute(sql.toString());
+        }
+        // Update table schema (handles both new and existing tables)
+        syncSchema(tableName, fields);
+
+        // Decommission any existing published version
+        List<FormVersion> existingPublished = versionRepository.findByFormId(version.getForm().getId());
+        for (FormVersion ev : existingPublished) {
+            if (ev.getStatus().equals("PUBLISHED") && !ev.getId().equals(version.getId())) {
+                ev.setStatus("ARCHIVED");
+                versionRepository.save(ev);
+            }
+        }
+
+        version.setStatus("PUBLISHED");
+        version.setTableName(tableName);
+        version.setPublishedAt(LocalDateTime.now());
+        versionRepository.save(version);
+    }
+
+    private void syncSchema(String tableName, List<FormField> fields) {
+        // Get existing columns for this table in public schema
+        String getColsSql = "SELECT column_name FROM information_schema.columns WHERE table_name = ? AND table_schema = 'public'";
+        List<String> existingCols = jdbcTemplate.queryForList(getColsSql, String.class, tableName);
+
+        if (!existingCols.contains("submitted_by")) {
+            jdbcTemplate
+                    .execute("ALTER TABLE \"" + tableName + "\" ADD COLUMN \"submitted_by\" UUID REFERENCES users(id)");
+        }
+
+        if (!existingCols.contains("deleted")) {
+            jdbcTemplate.execute("ALTER TABLE \"" + tableName + "\" ADD COLUMN \"deleted\" BOOLEAN DEFAULT FALSE");
+        }
+
+        for (FormField field : fields) {
+            String fieldType = field.getFieldType();
+            if ("HEADING".equalsIgnoreCase(fieldType) || "PAGE_BREAK".equalsIgnoreCase(fieldType)) {
+                continue;
+            }
+            String safeKey = field.getFieldKey();
+            String sqlType = SqlTypeMapper.map(fieldType);
+
+            if (!existingCols.contains(safeKey)) {
+                // Add missing column
+                StringBuilder alterSql = new StringBuilder("ALTER TABLE \"")
+                        .append(tableName)
+                        .append("\" ADD COLUMN \"")
+                        .append(safeKey)
+                        .append("\" ")
+                        .append(sqlType);
+
+                if (Boolean.TRUE.equals(field.getIsUnique())) {
+                    alterSql.append(" UNIQUE");
+                }
+
+                jdbcTemplate.execute(alterSql.toString());
+            }
+
+            // Handle requirement backfilling if field is required
+            if (Boolean.TRUE.equals(field.getRequired())) {
+                Object placeholder = getPlaceholder(fieldType);
+                String updateSql = "UPDATE \"" + tableName + "\" SET \"" + safeKey + "\" = ? WHERE \"" + safeKey
+                        + "\" IS NULL";
+                jdbcTemplate.update(updateSql, placeholder);
+            }
+        }
+    }
+
+    private Object getPlaceholder(String fieldType) {
+        String type = fieldType.toUpperCase();
+        return switch (type) {
+            case "NUMBER", "DECIMAL", "LINEAR_SCALE", "RATING", "RANGE", "INTEGER" -> 0;
+            default -> "";
+        };
+    }
+}

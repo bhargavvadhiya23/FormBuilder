@@ -1,0 +1,428 @@
+﻿[INFO] Scanning for projects...
+[WARNING] 
+[WARNING] Some problems were encountered while building the effective model for com.sttl:formbuilder:jar:0.0.1-SNAPSHOT
+[WARNING] 'dependencies.dependency.(groupId:artifactId:type:classifier)' must be unique: org.projectlombok:lombok:jar -> version (?) vs 1.18.30 @ line 70, column 21
+[WARNING] 'dependencies.dependency.(groupId:artifactId:type:classifier)' must be unique: org.springdoc:springdoc-openapi-starter-webmvc-ui:jar -> version 2.7.0 vs 2.8.6 @ line 105, column 21
+[WARNING] 
+[WARNING] It is highly recommended to fix these problems because they threaten the stability of your build.
+[WARNING] 
+[WARNING] For this reason, future Maven versions might no longer support building such malformed projects.
+[WARNING] 
+[INFO] 
+[INFO] ------------------------< com.sttl:formbuilder >------------------------
+[INFO] Building formbuilder 0.0.1-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] >>> spring-boot:3.5.11:run (default-cli) > test-compile @ formbuilder >>>
+[INFO] 
+[INFO] --- jacoco:0.8.12:prepare-agent (default) @ formbuilder ---
+[INFO] argLine set to "-javaagent:C:\\Users\\bharg\\.m2\\repository\\org\\jacoco\\org.jacoco.agent\\0.8.12\\org.jacoco.agent-0.8.12-runtime.jar=destfile=C:\\Users\\bharg\\Desktop\\Formbuilder Backup\\Formbuilder full app\\formbuilder v2\\target\\jacoco.exec"
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ formbuilder ---
+[INFO] Copying 1 resource from src\main\resources to target\classes
+[INFO] Copying 1 resource from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.14.1:compile (default-compile) @ formbuilder ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ formbuilder ---
+[INFO] skip non existing resourceDirectory C:\Users\bharg\Desktop\Formbuilder Backup\Formbuilder full app\formbuilder v2\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.14.1:testCompile (default-testCompile) @ formbuilder ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] <<< spring-boot:3.5.11:run (default-cli) < test-compile @ formbuilder <<<
+[INFO] 
+[INFO] 
+[INFO] --- spring-boot:3.5.11:run (default-cli) @ formbuilder ---
+[INFO] Attaching agents: []
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::               (v3.5.11)
+
+2026-03-12T18:54:11.112+05:30  INFO 22120 --- [formbuilder] [           main] c.s.formbuilder.FormbuilderApplication   : Starting FormbuilderApplication using Java 21.0.10 with PID 22120 (C:\Users\bharg\Desktop\Formbuilder Backup\Formbuilder full app\formbuilder v2\target\classes started by bharg in C:\Users\bharg\Desktop\Formbuilder Backup\Formbuilder full app\formbuilder v2)
+2026-03-12T18:54:11.115+05:30  INFO 22120 --- [formbuilder] [           main] c.s.formbuilder.FormbuilderApplication   : No active profile set, falling back to 1 default profile: "default"
+2026-03-12T18:54:11.976+05:30  INFO 22120 --- [formbuilder] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2026-03-12T18:54:12.097+05:30  INFO 22120 --- [formbuilder] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 110 ms. Found 7 JPA repository interfaces.
+2026-03-12T18:54:12.597+05:30  INFO 22120 --- [formbuilder] [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat initialized with port 8080 (http)
+2026-03-12T18:54:12.609+05:30  INFO 22120 --- [formbuilder] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-03-12T18:54:12.609+05:30  INFO 22120 --- [formbuilder] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/10.1.52]
+2026-03-12T18:54:12.684+05:30  INFO 22120 --- [formbuilder] [           main] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring embedded WebApplicationContext
+2026-03-12T18:54:12.685+05:30  INFO 22120 --- [formbuilder] [           main] w.s.c.ServletWebServerApplicationContext : Root WebApplicationContext: initialization completed in 1538 ms
+2026-03-12T18:54:12.801+05:30  INFO 22120 --- [formbuilder] [           main] o.hibernate.jpa.internal.util.LogHelper  : HHH000204: Processing PersistenceUnitInfo [name: default]
+2026-03-12T18:54:12.845+05:30  INFO 22120 --- [formbuilder] [           main] org.hibernate.Version                    : HHH000412: Hibernate ORM core version 6.6.42.Final
+2026-03-12T18:54:12.874+05:30  INFO 22120 --- [formbuilder] [           main] o.h.c.internal.RegionFactoryInitiator    : HHH000026: Second-level cache disabled
+2026-03-12T18:54:13.109+05:30  INFO 22120 --- [formbuilder] [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-03-12T18:54:13.135+05:30  INFO 22120 --- [formbuilder] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2026-03-12T18:54:13.397+05:30  INFO 22120 --- [formbuilder] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@1533338c
+2026-03-12T18:54:13.398+05:30  INFO 22120 --- [formbuilder] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+2026-03-12T18:54:13.456+05:30  INFO 22120 --- [formbuilder] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [Connecting through datasource 'HikariDataSource (HikariPool-1)']
+	Database driver: undefined/unknown
+	Database version: 18.1
+	Autocommit mode: undefined/unknown
+	Isolation level: undefined/unknown
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-03-12T18:54:14.454+05:30  INFO 22120 --- [formbuilder] [           main] o.h.e.t.j.p.i.JtaPlatformInitiator       : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+Hibernate: 
+    set client_min_messages = WARNING
+Hibernate: 
+    alter table if exists app_role_permissions 
+       drop constraint if exists FKltwi9tdmfbun1n7w0f5kt9381
+Hibernate: 
+    alter table if exists app_roles 
+       drop constraint if exists FKkj2uxl7605ysumjjxgg0ngala
+Hibernate: 
+    alter table if exists approval_requests 
+       drop constraint if exists FK5po777y579fbsn91cyyxiy3rt
+Hibernate: 
+    alter table if exists approval_requests 
+       drop constraint if exists FKh19k0fvktklfnqkmuw1ksq2ll
+Hibernate: 
+    alter table if exists form_fields 
+       drop constraint if exists FKdn5sn9i87l6n5rfq8mochqbxb
+Hibernate: 
+    alter table if exists form_rules 
+       drop constraint if exists FKiqk65w0wwada1p5tcyx99l3s4
+Hibernate: 
+    alter table if exists form_versions 
+       drop constraint if exists FK9abqq5r7m9g02e2qjlf2dt5w
+Hibernate: 
+    alter table if exists form_versions 
+       drop constraint if exists FKjsugk8f29jo2k0sw4fpflwyc2
+Hibernate: 
+    alter table if exists forms 
+       drop constraint if exists FKsc7q5t84q1028etk8brd2goga
+Hibernate: 
+    alter table if exists users 
+       drop constraint if exists FK29lwf4anqfm0hoaehwebt0r69
+Hibernate: 
+    alter table if exists users 
+       drop constraint if exists FKokny2ay1gyx2x7wvjfdrtwcff
+Hibernate: 
+    drop table if exists app_role_permissions cascade
+Hibernate: 
+    drop table if exists app_roles cascade
+Hibernate: 
+    drop table if exists approval_requests cascade
+Hibernate: 
+    drop table if exists form_fields cascade
+Hibernate: 
+    drop table if exists form_rules cascade
+Hibernate: 
+    drop table if exists form_versions cascade
+Hibernate: 
+    drop table if exists forms cascade
+Hibernate: 
+    drop table if exists users cascade
+Hibernate: 
+    create table app_role_permissions (
+        app_role_id uuid not null,
+        permission varchar(255) check (permission in ('CREATE_DRAFT_FORM','EDIT_DRAFT_FORM','EDIT_PUBLISHED_FORM','DELETE_DRAFT_FORM','DELETE_PUBLISHED_FORM','SUBMIT_FORM','EDIT_OWN_SUBMISSION','VIEW_PUBLISHED_SUBMISSIONS'))
+    )
+Hibernate: 
+    create table app_roles (
+        is_system boolean not null,
+        created_at timestamp(6),
+        created_by_admin uuid,
+        id uuid not null,
+        name varchar(100) not null unique,
+        approval_required_map TEXT,
+        primary key (id)
+    )
+Hibernate: 
+    create table approval_requests (
+        created_at timestamp(6),
+        resolved_at timestamp(6),
+        id uuid not null,
+        requested_by uuid not null,
+        routed_to_admin uuid not null,
+        admin_note TEXT,
+        description TEXT,
+        reference_id varchar(255) not null,
+        status varchar(255) not null check (status in ('PENDING','APPROVED','REJECTED')),
+        type varchar(255) not null check (type in ('CREATE_FORM','EDIT_PUBLISHED_FORM','DELETE_PUBLISHED_FORM')),
+        primary key (id)
+    )
+Hibernate: 
+    create table form_fields (
+        allow_special_chars boolean,
+        field_order integer not null,
+        is_unique boolean not null,
+        max_length integer,
+        max_value integer,
+        min_length integer,
+        min_value integer,
+        remove_extra_spaces boolean,
+        required boolean not null,
+        trim_whitespace boolean,
+        created_at timestamp(6),
+        id uuid not null,
+        version_id uuid not null,
+        char_type varchar(20),
+        max_value_str varchar(50),
+        min_value_str varchar(50),
+        data_source_column varchar(100),
+        data_source_table varchar(100),
+        allowed_file_types varchar(500),
+        custom_regex varchar(500),
+        help_text varchar(500),
+        field_key varchar(255) not null,
+        field_label varchar(255) not null,
+        field_type varchar(255) not null,
+        max_label varchar(255),
+        min_label varchar(255),
+        options TEXT,
+        primary key (id)
+    )
+Hibernate: 
+    create table form_rules (
+        enabled boolean not null,
+        priority integer not null,
+        created_at timestamp(6),
+        updated_at timestamp(6),
+        created_by uuid,
+        form_id uuid not null,
+        id uuid not null,
+        action_type varchar(30) not null,
+        condition_operator varchar(30),
+        action_field varchar(100),
+        condition_field varchar(100),
+        rule_name varchar(200) not null,
+        action_value varchar(500),
+        condition_value varchar(500),
+        description varchar(500),
+        primary key (id)
+    )
+Hibernate: 
+    create table form_versions (
+        version_number integer not null,
+        created_at timestamp(6) not null,
+        published_at timestamp(6),
+        created_by uuid,
+        form_id uuid not null,
+        id uuid not null,
+        status varchar(255) not null,
+        table_name varchar(255) unique,
+        primary key (id),
+        unique (form_id, version_number)
+    )
+Hibernate: 
+    create table forms (
+        deleted boolean not null,
+        one_submission_per_user boolean,
+        created_at timestamp(6),
+        unpublish_time timestamp(6),
+        updated_at timestamp(6),
+        created_by uuid,
+        id uuid not null,
+        name varchar(150) not null,
+        description varchar(255),
+        primary key (id)
+    )
+Hibernate: 
+    create table users (
+        soft_delete_enabled boolean,
+        created_date timestamp(6),
+        app_role_id uuid,
+        created_by_admin uuid,
+        id uuid not null,
+        email varchar(255) not null unique,
+        name varchar(255) not null,
+        password varchar(255) not null,
+        role varchar(255) not null check (role in ('USER','ADMIN')),
+        theme_config TEXT,
+        primary key (id)
+    )
+Hibernate: 
+    alter table if exists app_role_permissions 
+       add constraint FKltwi9tdmfbun1n7w0f5kt9381 
+       foreign key (app_role_id) 
+       references app_roles
+Hibernate: 
+    alter table if exists app_roles 
+       add constraint FKkj2uxl7605ysumjjxgg0ngala 
+       foreign key (created_by_admin) 
+       references users
+Hibernate: 
+    alter table if exists approval_requests 
+       add constraint FK5po777y579fbsn91cyyxiy3rt 
+       foreign key (requested_by) 
+       references users
+Hibernate: 
+    alter table if exists approval_requests 
+       add constraint FKh19k0fvktklfnqkmuw1ksq2ll 
+       foreign key (routed_to_admin) 
+       references users
+Hibernate: 
+    alter table if exists form_fields 
+       add constraint FKdn5sn9i87l6n5rfq8mochqbxb 
+       foreign key (version_id) 
+       references form_versions
+Hibernate: 
+    alter table if exists form_rules 
+       add constraint FKiqk65w0wwada1p5tcyx99l3s4 
+       foreign key (created_by) 
+       references users
+Hibernate: 
+    alter table if exists form_versions 
+       add constraint FK9abqq5r7m9g02e2qjlf2dt5w 
+       foreign key (created_by) 
+       references users
+Hibernate: 
+    alter table if exists form_versions 
+       add constraint FKjsugk8f29jo2k0sw4fpflwyc2 
+       foreign key (form_id) 
+       references forms
+Hibernate: 
+    alter table if exists forms 
+       add constraint FKsc7q5t84q1028etk8brd2goga 
+       foreign key (created_by) 
+       references users
+Hibernate: 
+    alter table if exists users 
+       add constraint FK29lwf4anqfm0hoaehwebt0r69 
+       foreign key (app_role_id) 
+       references app_roles
+Hibernate: 
+    alter table if exists users 
+       add constraint FKokny2ay1gyx2x7wvjfdrtwcff 
+       foreign key (created_by_admin) 
+       references users
+2026-03-12T18:54:14.828+05:30  INFO 22120 --- [formbuilder] [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-03-12T18:54:15.183+05:30  INFO 22120 --- [formbuilder] [           main] o.s.d.j.r.query.QueryEnhancerFactory     : Hibernate is in classpath; If applicable, HQL parser will be used.
+2026-03-12T18:54:15.692+05:30  INFO 22120 --- [formbuilder] [           main] eAuthenticationProviderManagerConfigurer : Global AuthenticationManager configured with AuthenticationProvider bean with name authenticationProvider
+2026-03-12T18:54:15.692+05:30  WARN 22120 --- [formbuilder] [           main] r$InitializeUserDetailsManagerConfigurer : Global AuthenticationManager configured with an AuthenticationProvider bean. UserDetailsService beans will not be used by Spring Security for automatically configuring username/password login. Consider removing the AuthenticationProvider bean. Alternatively, consider using the UserDetailsService in a manually instantiated DaoAuthenticationProvider. If the current configuration is intentional, to turn off this warning, increase the logging level of 'org.springframework.security.config.annotation.authentication.configuration.InitializeUserDetailsBeanManagerConfigurer' to ERROR
+Hibernate: 
+    select
+        ar1_0.id 
+    from
+        app_roles ar1_0 
+    where
+        ar1_0.name=? 
+    fetch
+        first ? rows only
+Hibernate: 
+    insert 
+    into
+        app_roles
+        (approval_required_map, created_at, created_by_admin, is_system, name, id) 
+    values
+        (?, ?, ?, ?, ?, ?)
+Hibernate: 
+    insert 
+    into
+        app_role_permissions
+        (app_role_id, permission) 
+    values
+        (?, ?)
+Hibernate: 
+    insert 
+    into
+        app_role_permissions
+        (app_role_id, permission) 
+    values
+        (?, ?)
+Hibernate: 
+    insert 
+    into
+        app_role_permissions
+        (app_role_id, permission) 
+    values
+        (?, ?)
+Hibernate: 
+    insert 
+    into
+        app_role_permissions
+        (app_role_id, permission) 
+    values
+        (?, ?)
+Hibernate: 
+    insert 
+    into
+        app_role_permissions
+        (app_role_id, permission) 
+    values
+        (?, ?)
+Hibernate: 
+    insert 
+    into
+        app_role_permissions
+        (app_role_id, permission) 
+    values
+        (?, ?)
+Hibernate: 
+    insert 
+    into
+        app_role_permissions
+        (app_role_id, permission) 
+    values
+        (?, ?)
+Hibernate: 
+    insert 
+    into
+        app_role_permissions
+        (app_role_id, permission) 
+    values
+        (?, ?)
+Hibernate: 
+    select
+        ar1_0.id 
+    from
+        app_roles ar1_0 
+    where
+        ar1_0.name=? 
+    fetch
+        first ? rows only
+Hibernate: 
+    insert 
+    into
+        app_roles
+        (approval_required_map, created_at, created_by_admin, is_system, name, id) 
+    values
+        (?, ?, ?, ?, ?, ?)
+Hibernate: 
+    insert 
+    into
+        app_role_permissions
+        (app_role_id, permission) 
+    values
+        (?, ?)
+Hibernate: 
+    insert 
+    into
+        app_role_permissions
+        (app_role_id, permission) 
+    values
+        (?, ?)
+2026-03-12T18:54:15.928+05:30  WARN 22120 --- [formbuilder] [           main] o.d.c.kie.builder.impl.KieBuilderImpl    : File 'rules/form_rules.drl' is in folder 'rules' but declares package 'com.sttl.formbuilder.rules'. It is advised to have a correspondance between package and folder names.
+2026-03-12T18:54:16.320+05:30  WARN 22120 --- [formbuilder] [           main] JpaBaseConfiguration$JpaWebConfiguration : spring.jpa.open-in-view is enabled by default. Therefore, database queries may be performed during view rendering. Explicitly configure spring.jpa.open-in-view to disable this warning
+2026-03-12T18:54:16.803+05:30  INFO 22120 --- [formbuilder] [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port 8080 (http) with context path '/'
+2026-03-12T18:54:16.810+05:30  INFO 22120 --- [formbuilder] [           main] c.s.formbuilder.FormbuilderApplication   : Started FormbuilderApplication in 6.094 seconds (process running for 6.595)
+2026-03-12T18:55:43.041+05:30  INFO 22120 --- [formbuilder] [nio-8080-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-03-12T18:55:43.041+05:30  INFO 22120 --- [formbuilder] [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-03-12T18:55:43.042+05:30  INFO 22120 --- [formbuilder] [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 1 ms
+Hibernate: 
+    select
+        u1_0.id 
+    from
+        users u1_0 
+    where
+        u1_0.email=? 
+    fetch
+        first ? rows only
+Hibernate: 
+    insert 
+    into
+        users
+        (app_role_id, created_by_admin, created_date, email, name, password, role, soft_delete_enabled, theme_config, id) 
+    values
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
