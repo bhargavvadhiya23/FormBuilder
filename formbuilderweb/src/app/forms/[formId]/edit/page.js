@@ -542,6 +542,7 @@ export default function FormEditPage({ params }) {
       const res = await formsApi.publish(formId, { note });
       if (res.status === 202) {
         toast.info(res.data.message || 'Publish request sent to your administrator.');
+        router.push('/');
       } else {
         setStatus({ published: true, shareLink: res.data.shareLink });
         toast.success('Form published! Share link is ready.');
@@ -1301,7 +1302,7 @@ export default function FormEditPage({ params }) {
 
                 <div style={{marginBottom: '12px'}}>
                   <label style={{fontSize: '0.8rem', color: 'var(--gf-text-secondary)', display: 'block', marginBottom: '4px'}}>
-                    Unpublish Date & Time
+                    FormExpiry Date & Time
                   </label>
                   <input
                     type="datetime-local"

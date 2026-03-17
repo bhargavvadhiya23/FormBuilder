@@ -50,8 +50,12 @@ public class RoleController {
             String name = (String) body.get("name");
             Set<Permission> permissions = parsePermissions(body);
             String approvalMap = buildApprovalMap(body);
+            List<UUID> moduleIds = parseModuleIds(body);
 
             AppRole created = roleManagementService.createRole(name, permissions, approvalMap, adminUser);
+            // After creating role, assign modules (will need service support)
+            roleManagementService.updateRoleModules(created.getId(), moduleIds, adminUser);
+            
             return ResponseEntity.ok(toMap(created));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
@@ -69,8 +73,11 @@ public class RoleController {
             String name = (String) body.get("name");
             Set<Permission> permissions = parsePermissions(body);
             String approvalMap = buildApprovalMap(body);
+            List<UUID> moduleIds = parseModuleIds(body);
 
             AppRole updated = roleManagementService.updateRole(roleId, name, permissions, approvalMap, adminUser);
+            roleManagementService.updateRoleModules(roleId, moduleIds, adminUser);
+            
             return ResponseEntity.ok(toMap(updated));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
@@ -99,9 +106,20 @@ public class RoleController {
         m.put("name", role.getName());
         m.put("isSystem", role.isSystem());
         m.put("permissions", role.getPermissions().stream().map(Permission::name).sorted().toList());
+        m.put("modules", role.getModules().stream().map(com.sttl.formbuilder.entity.Module::getId).toList());
         m.put("approvalRequiredMap", parseApprovalMap(role.getApprovalRequiredMap()));
         m.put("createdAt", role.getCreatedAt());
         return m;
+    }
+
+    private List<UUID> parseModuleIds(Map<String, Object> body) {
+        Object raw = body.get("modules");
+        if (!(raw instanceof List<?> list)) return List.of();
+        List<UUID> ids = new ArrayList<>();
+        for (Object item : list) {
+            try { ids.add(UUID.fromString(String.valueOf(item))); } catch (Exception ignored) {}
+        }
+        return ids;
     }
 
     private Set<Permission> parsePermissions(Map<String, Object> body) {

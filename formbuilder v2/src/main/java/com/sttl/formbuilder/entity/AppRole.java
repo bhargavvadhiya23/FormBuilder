@@ -66,4 +66,15 @@ public class AppRole {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+
+    /**
+     * Dynamic modules assigned to this role.
+     */
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "app_role_modules",
+            joinColumns = @JoinColumn(name = "app_role_id"),
+            inverseJoinColumns = @JoinColumn(name = "module_id")
+    )
+    private Set<Module> modules = new HashSet<>();
 }

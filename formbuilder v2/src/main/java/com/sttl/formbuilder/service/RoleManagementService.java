@@ -23,6 +23,7 @@ import java.util.UUID;
 public class RoleManagementService {
 
     private final AppRoleRepository appRoleRepository;
+    private final com.sttl.formbuilder.repository.ModuleRepository moduleRepository;
 
     /**
      * Returns all roles visible to this admin: system roles + their own custom roles.
@@ -68,12 +69,10 @@ public class RoleManagementService {
      */
     public AppRole updateRole(UUID roleId, String name, Set<Permission> permissions, String approvalRequiredMap, User adminUser) {
         AppRole role = getRole(roleId);
-        if (role.isSystem()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "System roles cannot be edited");
-        }
+        // Allow editing system roles as well now
 
-        // Ensure the admin owns this role
-        if (role.getCreatedByAdmin() == null || !role.getCreatedByAdmin().getId().equals(adminUser.getId())) {
+        // Ensure the admin owns this role (or it's a system role like Admin which has no owner)
+        if (!role.isSystem() && role.getCreatedByAdmin() != null && !role.getCreatedByAdmin().getId().equals(adminUser.getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not own this role");
         }
 
@@ -110,5 +109,20 @@ public class RoleManagementService {
     public AppRole getRole(UUID roleId) {
         return appRoleRepository.findById(roleId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Role not found: " + roleId));
+    }
+
+    /**
+     * Updates the dynamic modules assigned to a role.
+     */
+    public void updateRoleModules(UUID roleId, List<UUID> moduleIds, User adminUser) {
+        AppRole role = getRole(roleId);
+        // Allow editing system roles module assignments
+        if (!role.isSystem() && role.getCreatedByAdmin() != null && !role.getCreatedByAdmin().getId().equals(adminUser.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not own this role");
+        }
+
+        List<com.sttl.formbuilder.entity.Module> modules = moduleRepository.findAllById(moduleIds);
+        role.setModules(new java.util.HashSet<>(modules));
+        appRoleRepository.save(role);
     }
 }

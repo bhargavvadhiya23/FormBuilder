@@ -72,7 +72,11 @@ export default function FormsPage() {
         try {
           const res = await formsApi.publish(formId, { note });
           toast.success(res.data?.message || 'Approval request sent!');
-          fetchForms();
+          if (res.status === 202) {
+            router.push('/');
+          } else {
+            fetchForms();
+          }
         } catch (e) {
           toast.error(e.message || 'Failed to request approval');
         }
@@ -129,7 +133,11 @@ export default function FormsPage() {
       try {
         const res = await formsApi.delete(formId);
         toast.success(res.data?.message || (isPermanent ? 'Form deleted permanently' : 'Form moved to trash'));
-        fetchForms();
+        if (res.status === 202) {
+          router.push('/');
+        } else {
+          fetchForms();
+        }
       } catch (e) {
         toast.error(e.message || 'Failed to delete form');
       }
@@ -172,7 +180,11 @@ export default function FormsPage() {
       try {
         const res = await formsApi.bulkDeleteForms(selectedForms);
         toast.success(res.data?.message || (isPermanent ? 'Forms deleted permanently' : 'Forms moved to trash'));
-        fetchForms();
+        if (res.status === 202) {
+          router.push('/');
+        } else {
+          fetchForms();
+        }
       } catch (e) {
         toast.error(e.message || 'Failed to delete forms');
       }
