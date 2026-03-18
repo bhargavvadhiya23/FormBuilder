@@ -374,13 +374,13 @@ export default function FormsPage() {
           <p>{viewingTrash ? 'Recover or permanently delete your forms' : 'Create, edit and manage your forms'}</p>
         </div>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <button 
+          {/* <button 
             className={`gf-btn ${viewingTrash ? 'gf-btn-primary' : 'gf-btn-outline'}`}
             onClick={() => setViewingTrash(!viewingTrash)}
             style={viewingTrash ? { background: 'var(--gf-red)', borderColor: 'var(--gf-red)' } : {}}
           >
             {viewingTrash ? '← Back to Forms' : '🗑 View Trash'}
-          </button>
+          </button> */}
           {!viewingTrash && <Link href="/forms/create" className="gf-btn gf-btn-primary">＋ New Form</Link>}
         </div>
       </div>

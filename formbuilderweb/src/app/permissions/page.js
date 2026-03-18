@@ -2,9 +2,11 @@
 import { useState, useEffect } from 'react';
 import DataTable from '@/components/DataTable';
 import ModuleModal from '@/components/ModuleModal';
+import Swal from 'sweetalert2';
 import api from '@/lib/api';
 
 export default function PermissionsPage() {
+    // ... rest of the component state ...
     const [roles, setRoles] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -126,32 +128,102 @@ export default function PermissionsPage() {
                 data: payload
             });
             
+            Swal.fire({
+                title: 'Success!',
+                text: `Role ${editingRole ? 'updated' : 'created'} successfully`,
+                icon: 'success',
+                timer: 2000,
+                showConfirmButton: false,
+                background: 'var(--bg-secondary)',
+                color: 'var(--text-primary)'
+            });
+            
             await fetchRoles();
             setShowModal(false);
         } catch (err) {
-            alert(err.message);
+            Swal.fire({
+                title: 'Error',
+                text: err.response?.data?.message || err.message,
+                icon: 'error',
+                background: 'var(--bg-secondary)',
+                color: 'var(--text-primary)'
+            });
         }
     };
 
     const handleDeleteRole = async (id) => {
-        if (!confirm('Are you sure you want to delete this role?')) return;
-        
-        try {
-            await api.delete(`/admin/api/roles/${id}`);
-            fetchRoles();
-        } catch (err) {
-            alert(err.message);
+        const result = await Swal.fire({
+            title: 'Are you sure?',
+            text: "You won't be able to revert this!",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'Yes, delete it!',
+            background: 'var(--bg-secondary)',
+            color: 'var(--text-primary)'
+        });
+
+        if (result.isConfirmed) {
+            try {
+                await api.delete(`/admin/api/roles/${id}`);
+                Swal.fire({
+                    title: 'Deleted!',
+                    text: 'Role has been deleted.',
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false,
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)'
+                });
+                fetchRoles();
+            } catch (err) {
+                Swal.fire({
+                    title: 'Delete Failed',
+                    text: err.response?.data?.message || err.message,
+                    icon: 'error',
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)'
+                });
+            }
         }
     };
 
     const handleDeleteModule = async (id) => {
-        if (!confirm('Are you sure you want to delete this module? This cannot be undone.')) return;
-        
-        try {
-            await api.delete(`/api/modules/admin/${id}`);
-            fetchModules();
-        } catch (err) {
-            alert(err.message);
+        const result = await Swal.fire({
+            title: 'Delete Module?',
+            text: "This will remove the module and its hierarchy. This cannot be undone.",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'Yes, delete it!',
+            background: 'var(--bg-secondary)',
+            color: 'var(--text-primary)'
+        });
+
+        if (result.isConfirmed) {
+            try {
+                await api.delete(`/api/modules/admin/${id}`);
+                Swal.fire({
+                    title: 'Deleted!',
+                    text: 'Module has been deleted.',
+                    icon: 'success',
+                    timer: 1500,
+                    showConfirmButton: false,
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)'
+                });
+                fetchModules();
+            } catch (err) {
+                Swal.fire({
+                    title: 'Error',
+                    text: err.response?.data?.message || err.message,
+                    icon: 'error',
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)'
+                });
+            }
         }
     };
 

@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import Swal from 'sweetalert2';
 import api from '@/lib/api';
 
 export default function UserManagerPage() {
@@ -71,28 +72,70 @@ export default function UserManagerPage() {
                 payload.password = password;
             }
 
-            const res = await api({
+            await api({
                 method,
                 url,
                 data: payload
             });
 
-            
+            Swal.fire({
+                title: 'Success!',
+                text: `User ${editingUser ? 'updated' : 'created'} successfully`,
+                icon: 'success',
+                timer: 2000,
+                showConfirmButton: false,
+                background: 'var(--bg-secondary)',
+                color: 'var(--text-primary)'
+            });
+
             await fetchData();
             setShowModal(false);
         } catch (err) {
-            alert(err.message);
+            Swal.fire({
+                title: 'Error',
+                text: err.response?.data?.message || err.message,
+                icon: 'error',
+                background: 'var(--bg-secondary)',
+                color: 'var(--text-primary)'
+            });
         }
     };
 
     const handleDeleteUser = async (id) => {
-        if (!confirm('Are you sure you want to deactivate/delete this user?')) return;
-        
-        try {
-            await api.delete(`/admin/api/users/${id}`);
-            fetchData();
-        } catch (err) {
-            alert(err.message);
+        const result = await Swal.fire({
+            title: 'Are you sure?',
+            text: "Do you want to deactivate/delete this user?",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'Yes, delete it!',
+            background: 'var(--bg-secondary)',
+            color: 'var(--text-primary)'
+        });
+
+        if (result.isConfirmed) {
+            try {
+                await api.delete(`/admin/api/users/${id}`);
+                Swal.fire({
+                    title: 'Deleted!',
+                    text: 'User has been deleted.',
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false,
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)'
+                });
+                fetchData();
+            } catch (err) {
+                Swal.fire({
+                    title: 'Error',
+                    text: err.response?.data?.message || err.message,
+                    icon: 'error',
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)'
+                });
+            }
         }
     };
 

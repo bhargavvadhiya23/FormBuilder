@@ -10,6 +10,13 @@ import { useApp } from '@/lib/AppContext';
 const PUBLIC_PATHS = ['/login', '/user-login', '/user-register'];
 const PUBLIC_PREFIX = ['/publish/']; // public form fill pages
 
+// Map restricted routes to required permissions
+const ROUTE_PERMISSIONS = {
+  '/user-manager': 'MANAGE_USERS',
+  '/permissions': 'MANAGE_ROLES',
+  '/forms': 'CREATE_DRAFT_FORM',
+};
+
 function isPublicRoute(pathname) {
   if (PUBLIC_PATHS.includes(pathname)) return true;
   if (PUBLIC_PREFIX.some(p => pathname.startsWith(p))) return true;
@@ -32,9 +39,21 @@ export default function LayoutShell({ children }) {
     return user?.permissions?.includes(perm);
   };
 
-  // If authenticated but not allowed to access anything at all (rare case)
-  // For now, we allow all authenticated users to enter the shell and filter the sidebar.
-  const isForbidden = false; // Relaxing this to support custom roles
+  // Centralized Route Protection Check
+  const getRequiredPermission = () => {
+    // Check for exact matches first
+    if (ROUTE_PERMISSIONS[pathname]) return ROUTE_PERMISSIONS[pathname];
+    // Check for prefix matches (for sub-routes)
+    for (const [route, perm] of Object.entries(ROUTE_PERMISSIONS)) {
+      if (pathname.startsWith(route + '/') || pathname === route) {
+        return perm;
+      }
+    }
+    return null;
+  };
+
+  const requiredPermission = getRequiredPermission();
+  const isForbidden = !isPublic && user && requiredPermission && !hasPermission(requiredPermission);
 
   // Show the public page directly (no sidebar/topbar)
   if (isPublic) {
@@ -46,7 +65,7 @@ export default function LayoutShell({ children }) {
     );
   }
 
-  // Show Forbidden page if user is not an admin
+  // Show Forbidden page if user lacks required permission
   if (isForbidden) {
     return (
       <div style={{
@@ -56,14 +75,15 @@ export default function LayoutShell({ children }) {
         <div style={{ fontSize: '4rem', marginBottom: '10px' }}>🚫</div>
         <h1 style={{ fontSize: '1.8rem', fontWeight: 700, color: '#1a1a2e' }}>Access Denied</h1>
         <p style={{ color: '#6b7280', maxWidth: '400px', margin: '10px 0 24px' }}>
-          This area is restricted to administrators. You are currently logged in as <strong>{user.name}</strong> (User).
+          You don't have permission to access <strong>{pathname}</strong>. 
+          Please contact your administrator if you believe this is a mistake.
         </p>
         <div style={{ display: 'flex', gap: '12px' }}>
           <button
-            onClick={() => window.location.href = '/user-login'}
+            onClick={() => window.location.href = '/'}
             className="gf-btn gf-btn-purple"
           >
-            Go to User Panel
+            Back to Dashboard
           </button>
           <button
             className="gf-btn gf-btn-outline"

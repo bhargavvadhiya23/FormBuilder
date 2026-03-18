@@ -50,9 +50,12 @@ public class FormService {
             jdbcTemplate.execute("ALTER TABLE forms DROP CONSTRAINT IF EXISTS forms_name_key;");
             // Backfill: ensure all existing forms have deleted=false if null
             jdbcTemplate.execute("UPDATE forms SET deleted = false WHERE deleted IS NULL");
+            // Backfill: ensure all existing users have soft_delete_enabled=true
+            jdbcTemplate.execute("UPDATE users SET soft_delete_enabled = true WHERE soft_delete_enabled IS NULL OR soft_delete_enabled = false");
         } catch (Exception e) {
             System.err.println("Note: forms_name_key already dropped or backfill already done.");
         }
+
     }
 
     public List<Form> getAllForms() {

@@ -21,4 +21,6 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     /** All sub-users created by a specific admin. */
     List<User> findByCreatedByAdmin_Id(UUID adminId);
+
+    boolean existsByAppRole_Id(UUID roleId);
 }

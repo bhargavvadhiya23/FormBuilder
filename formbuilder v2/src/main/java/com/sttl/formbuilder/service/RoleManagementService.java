@@ -24,6 +24,7 @@ public class RoleManagementService {
 
     private final AppRoleRepository appRoleRepository;
     private final com.sttl.formbuilder.repository.ModuleRepository moduleRepository;
+    private final com.sttl.formbuilder.repository.UserRepository userRepository;
 
     /**
      * Returns all roles visible to this admin: system roles + their own custom roles.
@@ -103,6 +104,11 @@ public class RoleManagementService {
         if (role.getCreatedByAdmin() == null || !role.getCreatedByAdmin().getId().equals(adminUser.getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not own this role");
         }
+        
+        if (userRepository.existsByAppRole_Id(roleId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot delete role because it is assigned to users. Please reassign the users first.");
+        }
+        
         appRoleRepository.delete(role);
     }
 

@@ -8,11 +8,10 @@ import api from '@/lib/api';
 const navItems = [
     { path: '/', label: 'Dashboard', icon: '🏠' },
     { path: '/forms', label: 'Forms', icon: '📋', permission: 'CREATE_DRAFT_FORM' },
-    { path: '/settings', label: 'Settings', icon: '⚙️' },
+    // { path: '/settings', label: 'Settings', icon: '⚙️' },
     { path: '/permissions', label: 'Permission & Modules', icon: '🔐', permission: 'MANAGE_ROLES' },
     { path: '/user-manager', label: 'User Manager', icon: '👥', permission: 'MANAGE_USERS' },
-    { path: '/approvals', label: 'Approvals', icon: '✅', permission: 'MANAGE_APPROVALS' },
-    { path: '/my-requests', label: 'My Requests', icon: '🕒' },
+    { path: '/approvals', label: 'Approvals & Requests', icon: '✅' },
 ];
 
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {

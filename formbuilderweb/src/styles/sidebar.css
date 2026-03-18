@@ -20,9 +20,9 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 20px 16px;
+    padding: 0 16px;
     border-bottom: 1.5px solid var(--border-color);
-    min-height: var(--topbar-height);
+    height: var(--topbar-height);
     overflow: hidden;
     position: relative;
 }
@@ -44,6 +44,12 @@
     cursor: pointer;
     transition: all var(--transition);
     z-index: 10;
+    line-height: 1;
+}
+
+.sidebar-toggle-arrow .material-symbols-outlined {
+    font-size: 18px;
+    line-height: 1;
 }
 
 .sidebar-toggle-arrow:hover {
@@ -83,6 +89,7 @@
     font-weight: 700;
     color: var(--text-sidebar-active);
     white-space: nowrap;
+    line-height: 1.2;
 }
 
 .sidebar-logo-text span:last-child {

@@ -46,7 +46,8 @@ public class User implements UserDetails {
     private LocalDateTime createdDate;
 
     @Column(name = "soft_delete_enabled")
-    private Boolean softDeleteEnabled = false;
+    private Boolean softDeleteEnabled = true;
+
 
     @Column(name = "theme_config", columnDefinition = "TEXT")
     private String themeConfig = "{\"mode\": \"light\", \"primary\": \"#3b82f6\", \"secondary\": \"#64748b\", \"tertiary\": \"#10b981\"}";

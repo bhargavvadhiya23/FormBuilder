@@ -141,7 +141,7 @@
   overflow: hidden;
 }
 .topbar {
-  height: 56px;
+  height: 64px;
   background: var(--gf-surface);
   border-bottom: 1.5px solid var(--gf-border);
   display: flex;
