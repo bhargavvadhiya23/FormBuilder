@@ -59,6 +59,14 @@ public class RuleController {
             @RequestBody FormRule rule,
             @AuthenticationPrincipal User currentUser) {
         formService.getFormByIdAndUserId(formId, currentUser.getId());
+        
+        // ─── Guardrails: Max Rules ───────────────────────────────────────
+        long ruleCount = droolsRuleService.getRulesForForm(formId).size();
+        if (ruleCount >= 100) {
+            throw new IllegalArgumentException("Maximum of 100 business rules allowed per form.");
+        }
+        // ─────────────────────────────────────────────────────────────────
+
         // Validate action type
         validateRule(rule);
         rule.setFormId(formId);

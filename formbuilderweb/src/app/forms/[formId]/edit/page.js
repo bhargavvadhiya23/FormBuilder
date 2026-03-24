@@ -484,6 +484,10 @@ export default function FormEditPage({ params }) {
         allowedFileTypes: f.allowedFileTypes ?? '',
       };
     }));
+      // Refresh status to show "Draft Pending" warning if a new draft was created
+      const statusRes = await formsApi.getStatus(formId);
+      setStatus(statusRes.data);
+
       toast.success('Form saved!');
       return true;   // ← signal success to callers
     } catch (e) {
@@ -582,15 +586,13 @@ export default function FormEditPage({ params }) {
               if (ok) router.push(`/forms/${formId}/rules`);
             }}
           >⚙️ Rules</button>
-          {!status.published && (
-            <button 
-              className={`gf-btn gf-btn-outline ${saving ? 'disabled' : ''}`} 
-              onClick={saveAll} 
-              disabled={saving}
-            >
-              💾 Save
-            </button>
-          )}
+          <button 
+            className={`gf-btn gf-btn-outline ${saving ? 'disabled' : ''}`} 
+            onClick={saveAll} 
+            disabled={saving}
+          >
+            {saving ? '⏳ Saving...' : '💾 Save Draft'}
+          </button>
           <button 
             className={`gf-btn gf-btn-primary ${publishing ? 'disabled' : ''}`} 
             onClick={publishForm} 
@@ -606,12 +608,18 @@ export default function FormEditPage({ params }) {
       </div>
 
       {status.published && (
-        <div className="share-link-box" style={{ marginBottom: '16px', background: '#e8f0fe', border: '1px solid #4285f4' }}>
-          <span style={{ color: '#4285f4' }}>ℹ️</span>
-          <div className="share-link-url" style={{ color: '#4285f4', fontWeight: '500' }}>
-            This form is live. Any changes saved and published will update the active form.
+        <div className="share-link-box" style={{ 
+          marginBottom: '16px', 
+          background: status.hasDraft ? '#fff8e1' : '#e8f0fe', 
+          border: `1px solid ${status.hasDraft ? '#ffc107' : '#4285f4'}` 
+        }}>
+          <span style={{ color: status.hasDraft ? '#ff8f00' : '#4285f4' }}>{status.hasDraft ? '⚠️' : 'ℹ️'}</span>
+          <div className="share-link-url" style={{ color: status.hasDraft ? '#ff8f00' : '#4285f4', fontWeight: '500' }}>
+            {status.hasDraft 
+              ? "You are editing a DRAFT version. These changes will not be live until you click 'Update Live Form'." 
+              : "This form is live. Any changes you save will create a new draft for you to review before publishing."}
           </div>
-          <button className="share-copy-btn" onClick={copyLink}>Copy Link</button>
+          <button className="share-copy-btn" style={{ borderColor: status.hasDraft ? '#ffc107' : '#4285f4' }} onClick={copyLink}>Copy Link</button>
         </div>
       )}
 

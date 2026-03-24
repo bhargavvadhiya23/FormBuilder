@@ -110,17 +110,15 @@ export default function FormsPage() {
     const isPermanent = viewingTrash || !softDelete;
 
     const result = await Swal.fire({
-      title: isPermanent ? 'Delete Permanently?' : 'Move to Trash?',
-      text: isPermanent 
-        ? `"${formName}" will be permanently removed. This action cannot be undone.`
-        : `You are about to move "${formName}" to trash. This will also hide all its responses!`,
+      title: 'Delete Permanently?',
+      text: `"${formName}" will be permanently removed. This action cannot be undone.`,
       icon: 'warning',
       showCancelButton: true,
       background: 'var(--bg-secondary)',
       color: 'var(--text-primary)',
       confirmButtonColor: '#d93025',
       cancelButtonColor: 'var(--bg-primary)',
-      confirmButtonText: isPermanent ? 'Delete Permanently' : 'Move to Trash',
+      confirmButtonText: 'Delete Permanently',
       cancelButtonText: 'Cancel',
       reverseButtons: true,
       customClass: {
@@ -132,7 +130,7 @@ export default function FormsPage() {
     if (result.isConfirmed) {
       try {
         const res = await formsApi.delete(formId);
-        toast.success(res.data?.message || (isPermanent ? 'Form deleted permanently' : 'Form moved to trash'));
+        toast.success(res.data?.message || 'Form deleted permanently');
         if (res.status === 202) {
           router.push('/');
         } else {
@@ -167,19 +165,19 @@ export default function FormsPage() {
     const isPermanent = viewingTrash || !softDelete;
 
     const result = await Swal.fire({
-      title: isPermanent ? 'Delete Permanently?' : 'Move to Trash?',
-      text: `You have selected ${selectedForms.length} forms. ${isPermanent ? 'This action cannot be undone.' : 'They will be moved to the Trash Bin.'}`,
+      title: 'Delete Permanently?',
+      text: `You have selected ${selectedForms.length} forms. This action cannot be undone.`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d93025',
-      confirmButtonText: isPermanent ? 'Delete Permanently' : 'Move to Trash',
+      confirmButtonText: 'Delete Permanently',
       reverseButtons: true
     });
 
     if (result.isConfirmed) {
       try {
         const res = await formsApi.bulkDeleteForms(selectedForms);
-        toast.success(res.data?.message || (isPermanent ? 'Forms deleted permanently' : 'Forms moved to trash'));
+        toast.success(res.data?.message || 'Forms deleted permanently');
         if (res.status === 202) {
           router.push('/');
         } else {
@@ -221,7 +219,7 @@ export default function FormsPage() {
     '#00bcd4','#ff5722','#607d8b','#9c27b0','#3f51b5',
   ];
 
-  const draftsFiltered = filtered.filter(f => f.published !== true);
+  const draftsFiltered = filtered.filter(f => f.published !== true || f.hasDraft);
   const pubFiltered = filtered.filter(f => f.published === true);
 
   // Pagination Logic
@@ -260,6 +258,9 @@ export default function FormsPage() {
         <div className="form-card-banner" style={{ background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
           <span style={{ fontSize: '2rem' }}>📋</span>
           {isPub && <div className="form-card-badge">PUBLISHED</div>}
+          {form.hasDraft && isPub && (
+            <div className="form-card-badge" style={{ top: 32, background: '#f4b400', color: '#000' }}>PENDING DRAFT</div>
+          )}
         </div>
         <div className="form-card-body">
           <div className="form-card-title">{form.name}</div>
@@ -269,7 +270,11 @@ export default function FormsPage() {
           <div style={{ marginTop: '8px', fontSize: '0.78rem', color: 'var(--gf-text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
               <span>{form.createdAt ? new Date(form.createdAt).toLocaleDateString() : ''}</span>
-              {!isPub && <span style={{ color: 'var(--gf-text-placeholder)' }}>Draft</span>}
+              {(!isPub || form.hasDraft) && (
+                <span style={{ color: 'var(--gf-text-placeholder)', fontSize: '0.7rem', fontWeight: 'bold' }}>
+                  {form.hasDraft && isPub ? 'Draft Pending' : 'Draft'}
+                </span>
+              )}
             </div>
             {form.createdBy && (
               <div style={{ fontSize: '0.7rem', color: 'var(--gf-text-placeholder)' }}>
@@ -539,7 +544,7 @@ export default function FormsPage() {
             ) : (
               <button className="gf-btn gf-btn-danger gf-btn-sm" onClick={handleBulkDelete}>
                 <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>delete</span>
-                {user?.softDeleteEnabled ? 'Move to Trash' : 'Delete Permanently'}
+                Delete Permanently
               </button>
             )}
           </div>

@@ -88,7 +88,9 @@ public class FormController {
 
                         // Status reporting
                         boolean pub = formService.isPublished(f.getId());
+                        boolean hasDraft = formService.getDraftVersion(f.getId()).isPresent();
                         map.put("published", pub);
+                        map.put("hasDraft", hasDraft);
                         map.put("shareLink", pub ? "/publish/" + f.getId() : null);
                         
                         if (f.getCreatedBy() != null) {
@@ -118,7 +120,9 @@ public class FormController {
 
                         // Status reporting
                         boolean pub = formService.isPublished(f.getId());
+                        boolean hasDraft = formService.getDraftVersion(f.getId()).isPresent();
                         map.put("published", pub);
+                        map.put("hasDraft", hasDraft);
                         
                         if (f.getCreatedBy() != null) {
                             Map<String, String> creator = new java.util.HashMap<>();
@@ -291,6 +295,19 @@ public class FormController {
                 Form form = formService.getFormByIdAndUserId(formId, currentUser.getId());
                 FormVersion version = formService.ensureEditableDraft(formId, currentUser);
                 
+                // ─── Guardrails: Max Fields & Sections ───────────────────────────
+                long fieldCount = fieldRepository.countByVersion_Id(version.getId());
+                if (fieldCount >= 50) {
+                    throw new IllegalArgumentException("Maximum of 50 fields allowed per form.");
+                }
+                if ("PAGE_BREAK".equalsIgnoreCase(req.getFieldType())) {
+                    long pageCount = fieldRepository.countByVersion_IdAndFieldType(version.getId(), "PAGE_BREAK");
+                    if (pageCount >= 10) {
+                        throw new IllegalArgumentException("Maximum of 10 pages/sections allowed per form.");
+                    }
+                }
+                // ─────────────────────────────────────────────────────────────────
+
                 // Touch form timestamp
                 form.setUpdatedAt(java.time.LocalDateTime.now());
                 formService.saveForm(form);
@@ -605,6 +622,25 @@ public class FormController {
                 FormVersion version = formService.getPublishedVersion(formId)
                                 .orElseThrow(() -> new RuntimeException("No published version found"));
                 return ResponseEntity.ok(submissionService.getSubmissions(version.getId()));
+        }
+
+        @GetMapping("/{formId}/export")
+        public ResponseEntity<byte[]> exportSubmissions(@PathVariable UUID formId,
+                        @RequestParam(required = false) List<Long> ids,
+                        @AuthenticationPrincipal User currentUserPrincipal) {
+                User currentUser = userService.getUserById(currentUserPrincipal.getId());
+                formService.getFormByIdAndUserId(formId, currentUser.getId());
+
+                FormVersion version = formService.getPublishedVersion(formId)
+                                .orElseThrow(() -> new RuntimeException("No published version found to export"));
+
+                byte[] csvBytes = submissionService.exportToCsv(version.getId(), ids);
+
+                String filename = "submissions_" + formId + ".csv";
+                return ResponseEntity.ok()
+                                .header("Content-Type", "text/csv")
+                                .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                                .body(csvBytes);
         }
 
         @PutMapping("/{formId}/submissions/{id}")

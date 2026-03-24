@@ -644,6 +644,10 @@ public class SubmissionService {
      * Retrieve all submissions for a given version.
      */
     public List<Map<String, Object>> getSubmissions(UUID versionId) {
+        return getSubmissions(versionId, null);
+    }
+
+    public List<Map<String, Object>> getSubmissions(UUID versionId, List<Long> ids) {
         FormVersion version = versionRepository.findById(versionId)
                 .orElseThrow(() -> new RuntimeException("Version not found"));
 
@@ -670,11 +674,8 @@ public class SubmissionService {
 
                 String column = field.getDataSourceColumn();
                 String alias = "d" + (++dynamicCount);
-                // Select the label from the joined table (cast to VARCHAR to avoid COALESCE type mix), 
-                // fallback to the raw value (ID or old string) from submission table
                 sql.append(", COALESCE(CAST(").append(alias).append(".\"").append(column)
                         .append("\" AS VARCHAR), s.\"").append(key).append("\") as \"").append(key).append("\" ");
-                // Also select the raw ID for the edit modal to maintain "Call by Reference"
                 sql.append(", s.\"").append(key).append("\" as \"").append(key).append("_raw\" ");
             } else {
                 sql.append(", s.\"").append(key).append("\" ");
@@ -698,10 +699,18 @@ public class SubmissionService {
             }
         }
 
+        boolean hasWhere = false;
         String sqlCheckDeleted = "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = ? AND column_name = 'deleted' AND table_schema = CURRENT_SCHEMA()";
         Integer hasDeletedCol = jdbcTemplate.queryForObject(sqlCheckDeleted, Integer.class, tableName);
         if (hasDeletedCol != null && hasDeletedCol > 0) {
             sql.append(" WHERE s.\"deleted\" = FALSE ");
+            hasWhere = true;
+        }
+
+        if (ids != null && !ids.isEmpty()) {
+            sql.append(hasWhere ? " AND " : " WHERE ");
+            String idList = ids.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","));
+            sql.append(" s.\"id\" IN (").append(idList).append(") ");
         }
 
         sql.append(" ORDER BY s.\"submitted_at\" DESC");
@@ -876,5 +885,60 @@ public class SubmissionService {
         for (Long id : submissionIds) {
             recoverSubmission(versionId, id);
         }
+    }
+
+    /**
+     * Export submissions to CSV with formula injection protection.
+     */
+    public byte[] exportToCsv(UUID versionId) {
+        return exportToCsv(versionId, null);
+    }
+
+    public byte[] exportToCsv(UUID versionId, List<Long> ids) {
+        FormVersion version = versionRepository.findById(versionId)
+                .orElseThrow(() -> new RuntimeException("Version not found"));
+
+        List<FormField> fields = fieldRepository.findByVersion_IdOrderByFieldOrder(versionId)
+                .stream().filter(f -> !"HEADING".equalsIgnoreCase(f.getFieldType())).toList();
+        List<Map<String, Object>> submissions = getSubmissions(versionId, ids);
+
+        StringBuilder csv = new StringBuilder();
+
+        // Header
+        csv.append("\"ID\",\"Submitted At\"");
+        for (FormField field : fields) {
+            csv.append(",\"").append(escapeCsv(field.getFieldLabel())).append("\"");
+        }
+        csv.append("\n");
+
+        // Data
+        for (Map<String, Object> sub : submissions) {
+            csv.append("\"").append(sub.get("id")).append("\",");
+            csv.append("\"").append(sub.get("submitted_at")).append("\"");
+            for (FormField f : fields) {
+                Object val = sub.get(f.getFieldKey());
+                String strVal = val != null ? val.toString() : "";
+                csv.append(",\"").append(escapeCsv(sanitizeForCsvInjection(strVal))).append("\"");
+            }
+            csv.append("\n");
+        }
+
+        return csv.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private String escapeCsv(String value) {
+        if (value == null)
+            return "";
+        return value.replace("\"", "\"\"");
+    }
+
+    private String sanitizeForCsvInjection(String value) {
+        if (value == null || value.isEmpty())
+            return "";
+        char first = value.charAt(0);
+        if (first == '=' || first == '+' || first == '-' || first == '@') {
+            return "'" + value;
+        }
+        return value;
     }
 }

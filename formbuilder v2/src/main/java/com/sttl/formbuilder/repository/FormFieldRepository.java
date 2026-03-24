@@ -14,4 +14,8 @@ public interface FormFieldRepository extends JpaRepository<FormField, UUID> {
         boolean existsByVersion_IdAndFieldKey(UUID versionId, String fieldKey);
 
         java.util.Optional<FormField> findByVersion_IdAndFieldKey(UUID versionId, String fieldKey);
+
+        long countByVersion_Id(UUID versionId);
+
+        long countByVersion_IdAndFieldType(UUID versionId, String fieldType);
 }

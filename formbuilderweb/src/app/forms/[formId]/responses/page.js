@@ -336,43 +336,30 @@ export default function ResponsesPage({ params }) {
     navigator.clipboard.writeText(url).then(() => toast.success('Link copied!'));
   };
 
-  const exportCsv = (dataToExport) => {
-    const data = dataToExport || filteredResponses;
-    if (!data.length) return;
-    const headers = ['submitted_at', ...fields.map(f => f.fieldLabel || f.fieldKey), ...Array.from(extraColumnKeys)];
-    const rows = data.map(r => [
-      r.submitted_at || r.created_at || '',
-      ...fields.map(f => {
-        let val = r[f.fieldKey] ?? '';
-        if (typeof val === 'string' && val.includes('|')) {
-          const parts = val.split('|');
-          if (parts.length === 2) {
-            const savedName = parts[1];
-            const originalName = parts[0];
-            const url = formsApi.getDownloadUrl(savedName, originalName);
-            val = `=HYPERLINK("${url}", "${originalName.replace(/"/g, '""')}")`;
-          }
-        }
-        return val;
-      }),
-      ...Array.from(extraColumnKeys).map(key => r[key] ?? ''),
-    ]);
-    const csv = [headers, ...rows].map(r =>
-      r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
-    ).join('\n');
-    
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${form?.name || 'responses'}_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    // Clear selection after export if it was a selection export
-    if (dataToExport) {
-      setToggleCleared(!toggleCleared);
-      setSelectedRows([]);
+  const exportCsv = async (dataToExport) => {
+    try {
+      const ids = dataToExport ? dataToExport.map(r => r.id) : null;
+      toast.info(ids ? `Preparing export for ${ids.length} responses...` : "Preparing export...");
+      
+      const res = await formsApi.exportResponses(formId, ids);
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const dateStr = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', `${form?.name || 'responses'}_${dateStr}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success("Export successful!");
+      
+      if (dataToExport) {
+        setToggleCleared(!toggleCleared);
+        setSelectedRows([]);
+      }
+    } catch (e) {
+      toast.error("Export failed: " + (e.message || "Unknown error"));
     }
   };
 
@@ -435,20 +422,18 @@ export default function ResponsesPage({ params }) {
     const isPermanent = viewingTrash || !softDeleteEnabled;
 
     const result = await Swal.fire({
-      title: isPermanent ? "Delete Permanently?" : "Move to Trash?",
-      text: isPermanent
-        ? "This response will be permanently removed. This action cannot be undone."
-        : "The response will be moved to the Trash Bin.",
+      title: "Delete Permanently?",
+      text: "This response will be permanently removed. This action cannot be undone.",
       icon: "warning",
       showCancelButton: true,
       confirmButtonColor: "#d33",
-      confirmButtonText: isPermanent ? "Delete Permanently" : "Move to Trash",
+      confirmButtonText: "Delete Permanently",
     });
 
     if (result.isConfirmed) {
       try {
         await formsApi.deleteResponse(formId, respId);
-        toast.success(isPermanent ? "Response deleted permanently" : "Response moved to trash");
+        toast.success("Response deleted permanently");
         fetchData();
       } catch (e) {
         toast.error(e.message || "Delete failed");
@@ -473,19 +458,19 @@ export default function ResponsesPage({ params }) {
     const isPermanent = viewingTrash || !softDeleteEnabled;
 
     const res = await Swal.fire({
-      title: isPermanent ? 'Delete Permanently?' : 'Move to Trash?',
-      text: `You have selected ${selectedRows.length} responses. ${isPermanent ? 'This action cannot be undone.' : 'They will be moved to the Trash Bin.'}`,
+      title: 'Delete Permanently?',
+      text: `You have selected ${selectedRows.length} responses. This action cannot be undone.`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33',
-      confirmButtonText: isPermanent ? 'Delete Permanently' : 'Move to Trash'
+      confirmButtonText: 'Delete Permanently'
     });
 
     if (res.isConfirmed) {
       try {
         const ids = selectedRows.map(r => r.id);
         await formsApi.bulkDeleteResponses(formId, ids);
-        toast.success(isPermanent ? "Responses permanently deleted" : "Responses moved to trash");
+        toast.success("Responses permanently deleted");
         setToggleCleared(!toggleCleared);
         setSelectedRows([]);
         fetchData();
@@ -745,14 +730,15 @@ export default function ResponsesPage({ params }) {
           <h1 style={{ marginTop: '4px' }}>{form?.name} — Responses</h1>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button 
+{/* <button 
             className={`gf-btn ${viewingTrash ? 'gf-btn-primary' : 'gf-btn-outline'}`} 
             onClick={() => setViewingTrash(!viewingTrash)}
             style={viewingTrash ? { background: 'var(--gf-text-secondary)' } : {}}
           >
             {viewingTrash ? '📄 View Responses' : '🗑️ View Trash'}
-          </button>
+          </button> */}
           {!viewingTrash && <button className="gf-btn gf-btn-primary" onClick={openAddModal}>＋ Add Response</button>}
+          <button className="gf-btn gf-btn-outline" onClick={() => exportCsv()}>📥 Export All (CSV)</button>
           <button className="gf-btn gf-btn-outline" onClick={copyLink}>🔗 Copy Form Link</button>
         </div>
 
@@ -851,7 +837,7 @@ export default function ResponsesPage({ params }) {
                     onClick={handleBulkDelete}
                   >
                     <span className="material-symbols-outlined" style={{ fontSize: '18px', marginRight: '4px' }}>delete</span>
-                    {user?.softDeleteEnabled ? 'Move to Trash' : 'Delete'} ({selectedRows.length})
+                    Delete ({selectedRows.length})
                   </button>
                 )}
               </div>

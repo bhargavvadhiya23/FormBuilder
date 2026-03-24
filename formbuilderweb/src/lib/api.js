@@ -89,6 +89,10 @@ export const formsApi = {
   updateResponse: (id, responseId, data) => api.put(`/admin/api/forms/${id}/submissions/${responseId}`, data),
   recoverSubmission: (id, responseId) => api.post(`/admin/api/forms/${id}/submissions/${responseId}/recover`),
   deleteResponse: (id, responseId)    => api.delete(`/admin/api/forms/${id}/submissions/${responseId}`),
+  exportResponses: (id, ids)          => {
+    const params = ids && ids.length > 0 ? { ids: ids.join(',') } : {};
+    return api.get(`/admin/api/forms/${id}/export`, { params, responseType: 'blob' });
+  },
 
   // Bulk Operations
   bulkDeleteForms: (ids) => api.delete('/admin/api/forms/bulk', { data: ids }),

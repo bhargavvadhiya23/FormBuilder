@@ -187,6 +187,7 @@ public class PublicFormController {
         }
 
         status.put("published", published);
+        status.put("hasDraft", formService.getDraftVersion(formId).isPresent());
         status.put("shareLink", published ? "/publish/" + formId : null);
         return ResponseEntity.ok(status);
     }

@@ -44,7 +44,8 @@ public class GlobalExceptionHandler {
             "Rule not found",
             "Invalid operator",
             "Action type is required",
-            "Rule name is required"
+            "Rule name is required",
+            "Maximum of"
     };
 
     @ExceptionHandler(RuntimeException.class)

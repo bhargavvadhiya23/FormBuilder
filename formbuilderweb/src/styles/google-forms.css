@@ -1176,7 +1176,7 @@
 }
 .gf-btn-danger {
   background: var(--gf-red);
-  color: #fff;
+  color: #000000;
   border-color: var(--gf-red);
 }
 .gf-btn-danger:hover {

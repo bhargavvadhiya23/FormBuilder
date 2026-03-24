@@ -81,19 +81,27 @@ public class SchemaService {
         // Update table schema (handles both new and existing tables)
         syncSchema(tableName, fields);
 
-        // Decommission any existing published version
-        List<FormVersion> existingPublished = versionRepository.findByFormId(version.getForm().getId());
-        for (FormVersion ev : existingPublished) {
-            if (ev.getStatus().equals("PUBLISHED") && !ev.getId().equals(version.getId())) {
-                ev.setStatus("ARCHIVED");
-                versionRepository.save(ev);
-            }
-        }
-
+        // Update current version status
         version.setStatus("PUBLISHED");
         version.setTableName(tableName);
         version.setPublishedAt(LocalDateTime.now());
         versionRepository.save(version);
+
+        // Decommission any existing published version AND drop any remaining drafts
+        List<FormVersion> otherVersions = versionRepository.findByFormId(version.getForm().getId());
+        for (FormVersion ov : otherVersions) {
+            if (ov.getId().equals(version.getId())) continue;
+
+            if (ov.getStatus().equals("PUBLISHED")) {
+                ov.setStatus("ARCHIVED");
+                versionRepository.save(ov);
+            } else if (ov.getStatus().equals("DRAFT")) {
+                // SRS: "Any existing drafts for the previous version are specifically dropped (not migrated)"
+                // Delete fields first to avoid FK issues
+                fieldRepository.deleteAll(fieldRepository.findByVersion_IdOrderByFieldOrder(ov.getId()));
+                versionRepository.delete(ov);
+            }
+        }
     }
 
     private void syncSchema(String tableName, List<FormField> fields) {
