@@ -29,17 +29,20 @@ public class VersionController {
     private final SchemaService schemaService;
     private final SubmissionService submissionService;
     private final com.sttl.formbuilder.service.FormService formService;
+    private final com.sttl.formbuilder.service.VersionService versionService;
 
     public VersionController(FormFieldRepository fieldRepository,
             FormVersionRepository versionRepository,
             SchemaService schemaService,
             SubmissionService submissionService,
-            com.sttl.formbuilder.service.FormService formService) {
+            com.sttl.formbuilder.service.FormService formService,
+            com.sttl.formbuilder.service.VersionService versionService) {
         this.fieldRepository = fieldRepository;
         this.versionRepository = versionRepository;
         this.schemaService = schemaService;
         this.submissionService = submissionService;
         this.formService = formService;
+        this.versionService = versionService;
     }
 
     private void checkOwnership(UUID versionId, User user) {
@@ -54,6 +57,21 @@ public class VersionController {
                 .filter(v -> v.getForm() != null && v.getForm().getCreatedBy() != null
                         && v.getForm().getCreatedBy().getId().equals(currentUser.getId()))
                 .toList());
+    }
+
+    @PostMapping("/{formId}/draft")
+    public com.sttl.formbuilder.entity.FormVersion createDraft(@PathVariable java.util.UUID formId) {
+        return versionService.createDraftVersion(formId);
+    }
+
+    @GetMapping("/form/{formId}")
+    public java.util.List<com.sttl.formbuilder.entity.FormVersion> getVersions(@PathVariable java.util.UUID formId) {
+        return versionService.getVersionsDataByFormId(formId);
+    }
+
+    @PostMapping("/{versionId}/activate")
+    public com.sttl.formbuilder.entity.FormVersion activateVersion(@PathVariable java.util.UUID versionId) {
+        return versionService.activateVersion(versionId);
     }
 
     @GetMapping("/{versionId}")
@@ -82,6 +100,6 @@ public class VersionController {
     public ResponseEntity<List<Map<String, Object>>> getSubmissions(@PathVariable UUID versionId,
             @AuthenticationPrincipal User currentUser) {
         checkOwnership(versionId, currentUser);
-        return ResponseEntity.ok(submissionService.getSubmissions(versionId));
+        return ResponseEntity.ok(submissionService.getSubmissions(versionId, true, null));
     }
 }

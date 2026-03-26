@@ -100,6 +100,12 @@ export const formsApi = {
   bulkDeleteResponses: (formId, ids) => api.delete(`/admin/api/forms/${formId}/submissions/bulk`, { data: ids }),
   bulkRecoverResponses: (formId, ids) => api.post(`/admin/api/forms/${formId}/submissions/bulk/recover`, ids),
 
+  // Versions
+  getVersions: (formId) => api.get(`/admin/api/versions/form/${formId}`),
+  activateVersion: (versionId) => api.post(`/admin/api/versions/${versionId}/activate`),
+  getVersionSubmissions: (versionId) => api.get(`/admin/api/versions/${versionId}/submissions`),
+  getVersionFields: (versionId) => api.get(`/admin/api/versions/${versionId}/fields`),
+
   // Dynamic Options
   getDynamicOptions: (formId, fieldKey) => api.get(`/admin/api/forms/${formId}/fields/${fieldKey}/options`),
   getPublicDynamicOptions: (formId, fieldKey) => api.get(`/publish/${formId}/fields/${fieldKey}/options`),

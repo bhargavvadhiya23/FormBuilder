@@ -101,6 +101,9 @@ public class FormField {
 	@Column(nullable = false)
 	private Boolean isUnique = false;
 
+	@Column(nullable = false)
+	private Boolean isOriginal = false;
+
 	// ───────────────────────────────────────────────────────────────────────────
 
 	@Column(updatable = false)

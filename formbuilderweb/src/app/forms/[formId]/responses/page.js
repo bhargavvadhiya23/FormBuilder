@@ -299,6 +299,8 @@ export default function ResponsesPage({ params }) {
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
   const [viewingTrash, setViewingTrash] = useState(false);
+  const [versions, setVersions] = useState([]);
+  const [selectedVersionId, setSelectedVersionId] = useState('');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -310,26 +312,43 @@ export default function ResponsesPage({ params }) {
   const [toggleCleared, setToggleCleared] = useState(false);
 
 
-  const fetchData = () => {
+  const fetchData = (vId) => {
     setLoading(true);
+    const versionToFetch = vId || selectedVersionId;
     const apiCalls = [
       formsApi.getById(formId),
-      viewingTrash ? formsApi.getTrashSubmissions(formId) : formsApi.getResponses(formId),
+      viewingTrash ? formsApi.getTrashSubmissions(formId) : (versionToFetch ? formsApi.getVersionSubmissions(versionToFetch) : formsApi.getResponses(formId)),
       formsApi.getPublished(formId),
     ];
 
     Promise.all(apiCalls).then(([fRes, rRes, pubRes]) => {
       setForm(fRes.data);
       setResponses(Array.isArray(rRes.data) ? rRes.data : []);
-      setFields(Array.isArray(pubRes.data.fields) ? pubRes.data.fields : []);
+      // If we fetched a specific version, use its fields. If not, use current published ones.
+      if (versionToFetch) {
+        formsApi.getVersionFields(versionToFetch).then(vfRes => {
+           setFields(Array.isArray(vfRes.data) ? vfRes.data : []);
+        });
+      } else {
+        setFields(Array.isArray(pubRes.data.fields) ? pubRes.data.fields : []);
+      }
     })
     .catch(e => setError(e.message))
     .finally(() => setLoading(false));
   };
 
   useEffect(() => {
+    // Fetch versions once
+    formsApi.getVersions(formId).then(res => {
+      setVersions(res.data || []);
+      const active = res.data?.find(v => v.active);
+      if (active) setSelectedVersionId(active.id);
+    });
+  }, [formId]);
+
+  useEffect(() => {
     fetchData();
-  }, [formId, viewingTrash]);
+  }, [formId, viewingTrash, selectedVersionId]);
 
   const copyLink = () => {
     const url = `${window.location.origin}/publish/${formId}`;
@@ -743,6 +762,118 @@ export default function ResponsesPage({ params }) {
         </div>
 
       </div>
+
+      <div className="gf-version-filter-card">
+        <div className="gf-version-filter-header">
+          <div className="gf-version-filter-title">
+            <span className="material-symbols-outlined">history</span>
+            <span>Version History</span>
+          </div>
+          <div className="gf-version-filter-controls">
+            <select 
+              className="gf-select-premium" 
+              value={selectedVersionId}
+              onChange={(e) => setSelectedVersionId(e.target.value)}
+            >
+              <option value="">Latest Published (All Versions)</option>
+              {versions.map(v => (
+                <option key={v.id} value={v.id}>
+                  Version {v.versionNumber} {v.active ? '• Active' : ''} ({v.status})
+                </option>
+              ))}
+            </select>
+            {selectedVersionId && (
+              <div className="gf-version-badge-info">
+                <span className="gf-dot"></span>
+                Showing Version {versions.find(v => v.id === selectedVersionId)?.versionNumber}
+              </div>
+            )}
+          </div>
+        </div>
+        {selectedVersionId && (
+           <p className="gf-version-filter-desc">
+             You are currently viewing submissions made specifically for <strong>Version {versions.find(v => v.id === selectedVersionId)?.versionNumber}</strong>. 
+             Field columns have been adjusted to match this version's schema.
+           </p>
+        )}
+      </div>
+
+      <style jsx>{`
+        .gf-version-filter-card {
+          background: var(--gf-surface);
+          border: 1px solid var(--gf-border);
+          border-radius: 12px;
+          padding: 20px;
+          margin-bottom: 24px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+          transition: all 0.2s ease;
+        }
+        .gf-version-filter-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 16px;
+        }
+        .gf-version-filter-title {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-weight: 600;
+          color: var(--gf-text);
+          font-size: 1rem;
+        }
+        .gf-version-filter-title .material-symbols-outlined {
+          color: var(--gf-purple);
+          font-size: 22px;
+        }
+        .gf-version-filter-controls {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .gf-select-premium {
+          padding: 8px 16px;
+          border-radius: 8px;
+          border: 1px solid var(--gf-border);
+          background: var(--gf-bg);
+          color: var(--gf-text);
+          font-size: 0.9rem;
+          min-width: 260px;
+          cursor: pointer;
+          outline: none;
+          transition: border-color 0.2s;
+        }
+        .gf-select-premium:focus {
+          border-color: var(--gf-purple);
+        }
+        .gf-version-badge-info {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          background: #f0fdf4;
+          color: #166534;
+          padding: 6px 12px;
+          border-radius: 20px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          border: 1px solid #bbf7d0;
+        }
+        .gf-dot {
+          width: 6px;
+          height: 6px;
+          background: #22c55e;
+          border-radius: 50%;
+        }
+        .gf-version-filter-desc {
+          margin-top: 12px;
+          font-size: 0.85rem;
+          color: var(--gf-text-secondary);
+          line-height: 1.5;
+          padding-top: 12px;
+          border-top: 1px solid var(--gf-border-light);
+        }
+      `}</style>
 
       {/* Stats */}
       <div className="responses-stats">

@@ -47,6 +47,28 @@ public class FormVersion {
 	@JoinColumn(name = "created_by")
 	private User createdBy;
 
+	@Column(nullable = false)
+	private boolean deleted = false;
+
+	@Column(nullable = false)
+	private boolean isActive = false;
+
+	public boolean isDeleted() {
+		return deleted;
+	}
+
+	public void setDeleted(boolean deleted) {
+		this.deleted = deleted;
+	}
+
+	public boolean isActive() {
+		return isActive;
+	}
+
+	public void setActive(boolean active) {
+		isActive = active;
+	}
+
 	public UUID getId() {
 		return id;
 	}

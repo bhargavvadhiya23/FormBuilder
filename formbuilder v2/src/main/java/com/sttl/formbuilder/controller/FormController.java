@@ -621,7 +621,7 @@ public class FormController {
                 formService.getFormByIdAndUserId(formId, currentUser.getId());
                 FormVersion version = formService.getPublishedVersion(formId)
                                 .orElseThrow(() -> new RuntimeException("No published version found"));
-                return ResponseEntity.ok(submissionService.getSubmissions(version.getId()));
+                return ResponseEntity.ok(submissionService.getSubmissions(version.getId(), false, null));
         }
 
         @GetMapping("/{formId}/export")

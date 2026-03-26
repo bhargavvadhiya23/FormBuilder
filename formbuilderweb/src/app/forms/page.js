@@ -338,6 +338,11 @@ export default function FormsPage() {
                 {(user?.role === 'ADMIN' || user?.permissions?.includes(isPub ? 'EDIT_PUBLISHED_FORM' : 'EDIT_DRAFT_FORM')) && (
                   <Link href={`/forms/${form.id}/rules`} className="gf-btn gf-btn-ghost gf-btn-sm" title="Rules Engine">⚙️</Link>
                 )}
+
+                {/* Versions button — icon only — published cards only */}
+                {isPub && (user?.role === 'ADMIN' || user?.permissions?.includes('VIEW_PUBLISHED_FORMS')) && (
+                  <Link href={`/forms/${form.id}/versions`} className="gf-btn gf-btn-ghost gf-btn-sm" title="Version History">🕒</Link>
+                )}
                 
                 {isPub ? (
                   <button className="gf-btn gf-btn-ghost gf-btn-sm" onClick={() => copyLink(form.id)} title="Copy share link">🔗</button>

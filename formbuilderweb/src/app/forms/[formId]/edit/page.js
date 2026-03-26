@@ -153,6 +153,7 @@ export default function FormEditPage({ params }) {
           allowSpecialChars: f.allowSpecialChars ?? true,
           customRegex: f.customRegex ?? '',
           isUnique: f.isUnique ?? false, // New property
+          isOriginal: f.isOriginal ?? false, // Added isOriginal
           allowedFileTypes: f.allowedFileTypes ?? '',
           dataSourceTable: f.dataSourceTable ?? '',
           dataSourceColumn: f.dataSourceColumn ?? '',
@@ -546,10 +547,11 @@ export default function FormEditPage({ params }) {
       const res = await formsApi.publish(formId, { note });
       if (res.status === 202) {
         toast.info(res.data.message || 'Publish request sent to your administrator.');
-        router.push('/');
+        router.push('/forms');
       } else {
         setStatus({ published: true, shareLink: res.data.shareLink });
         toast.success('Form published! Share link is ready.');
+        router.push('/forms');
       }
     } catch (e) {
       toast.error(e.message || 'Publish failed');
@@ -683,8 +685,9 @@ export default function FormEditPage({ params }) {
                    placeholder={IS_LAYOUT.includes(q.fieldType) ? (q.fieldType === 'PAGE_BREAK' ? 'Section Title' : 'Title') : 'Question'}
                   value={q.fieldLabel}
                   onChange={e => updateQ(idx, 'fieldLabel', e.target.value)}
+                  disabled={status.published && q.isOriginal}
                 />
-                <span className="q-type-badge">{FIELD_TYPES.find(t => t.value === q.fieldType)?.label.split(' ').slice(1).join(' ')}</span>
+              <span className="q-type-badge">{FIELD_TYPES.find(t => t.value === q.fieldType)?.label.split(' ').slice(1).join(' ')}</span>
               </div>
 
               {/* Help/Description text */}
@@ -695,6 +698,7 @@ export default function FormEditPage({ params }) {
                   value={q.helpText || ''}
                   rows={IS_LAYOUT.includes(q.fieldType) ? 2 : 1}
                   onChange={e => updateQ(idx, 'helpText', e.target.value)}
+                  disabled={status.published && q.isOriginal}
                 />
               )}
 
@@ -708,18 +712,19 @@ export default function FormEditPage({ params }) {
                         : q.fieldType === 'DROPDOWN'
                           ? <span style={{ color: 'var(--gf-text-secondary)', fontSize: '0.85rem', width: '20px' }}>{oi + 1}.</span>
                           : <div className="option-radio" />}
-                      <input
-                        className="option-input"
-                        value={opt}
-                        onChange={e => updateOption(idx, oi, e.target.value)}
-                        placeholder={`Option ${oi + 1}`}
-                      />
+                        <input
+                          className="option-input"
+                          value={opt}
+                          onChange={e => updateOption(idx, oi, e.target.value)}
+                          placeholder={`Option ${oi + 1}`}
+                          disabled={status.published && q.isOriginal}
+                        />
                       <button className="option-delete-btn" onClick={() => removeOption(idx, oi)}>✕</button>
                     </div>
                   ))}
-                  <button className="add-option-btn" onClick={() => addOption(idx)}>
-                    ＋ Add option
-                  </button>
+                    <button className="add-option-btn" onClick={() => addOption(idx)} disabled={status.published && q.isOriginal}>
+                      ＋ Add option
+                    </button>
                 </div>
               )}
 
@@ -731,12 +736,14 @@ export default function FormEditPage({ params }) {
                       Min:&nbsp;
                       <input type="number" min={0} max={1} value={q.minValue}
                         onChange={e => updateQ(idx, 'minValue', parseInt(e.target.value))}
+                        disabled={status.published && q.isOriginal}
                         style={{ width: '50px', border: '1px solid var(--gf-border)', borderRadius: '3px', padding: '3px 6px' }}
                       />
                     </label>
                     <label style={{ fontSize: '0.85rem', color: 'var(--gf-text-secondary)' }}>
                       Max:&nbsp;
                       <select value={q.maxValue} onChange={e => updateQ(idx, 'maxValue', parseInt(e.target.value))}
+                        disabled={status.published && q.isOriginal}
                         style={{ border: '1px solid var(--gf-border)', borderRadius: '3px', padding: '3px 6px' }}>
                         {[2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>{n}</option>)}
                       </select>
@@ -749,9 +756,9 @@ export default function FormEditPage({ params }) {
                   </div>
                   <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
                     <input className="option-input" placeholder="Min label (e.g. Not at all)" value={q.minLabel}
-                      onChange={e => updateQ(idx, 'minLabel', e.target.value)} style={{ flex: 1 }} />
+                      onChange={e => updateQ(idx, 'minLabel', e.target.value)} style={{ flex: 1 }} disabled={status.published && q.isOriginal} />
                     <input className="option-input" placeholder="Max label (e.g. Definitely)" value={q.maxLabel}
-                      onChange={e => updateQ(idx, 'maxLabel', e.target.value)} style={{ flex: 1 }} />
+                      onChange={e => updateQ(idx, 'maxLabel', e.target.value)} style={{ flex: 1 }} disabled={status.published && q.isOriginal} />
                   </div>
                 </div>
               )}
@@ -833,6 +840,7 @@ export default function FormEditPage({ params }) {
                 <select
                   className="settings-input"
                   value={questions[activeIdx].fieldType}
+                  disabled={status.published && questions[activeIdx].isOriginal}
                   onChange={e => {
                     const newType = e.target.value;
                     const oldType = questions[activeIdx].fieldType;
@@ -882,6 +890,7 @@ export default function FormEditPage({ params }) {
                   value={questions[activeIdx].helpText || ''}
                   onChange={(e) => updateQ(activeIdx, 'helpText', e.target.value)}
                   placeholder="Instructions for users..."
+                  disabled={status.published && questions[activeIdx].isOriginal}
                 />
               </div>
 
@@ -892,6 +901,7 @@ export default function FormEditPage({ params }) {
                     <input
                       type="checkbox"
                       checked={questions[activeIdx].required || false}
+                      disabled={status.published && questions[activeIdx].isOriginal}
                       onChange={(e) => updateQ(activeIdx, 'required', e.target.checked)}
                       style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--gf-purple)' }}
                     />
@@ -903,6 +913,7 @@ export default function FormEditPage({ params }) {
                       <input
                         type="checkbox"
                         checked={questions[activeIdx].isUnique || false}
+                        disabled={status.published && questions[activeIdx].isOriginal}
                         onChange={(e) => updateQ(activeIdx, 'isUnique', e.target.checked)}
                         style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--gf-purple)' }}
                       />
@@ -915,16 +926,16 @@ export default function FormEditPage({ params }) {
                 <div className="settings-group" style={{marginTop: '20px'}}>
                   <label className="settings-label">Scale Range</label>
                   <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
-                    <input type="number" min={0} max={1} className="settings-input" value={questions[activeIdx].minValue} onChange={e => updateQ(activeIdx, 'minValue', parseInt(e.target.value))} />
+                    <input type="number" min={0} max={1} className="settings-input" value={questions[activeIdx].minValue} onChange={e => updateQ(activeIdx, 'minValue', parseInt(e.target.value))} disabled={status.published && questions[activeIdx].isOriginal} />
                     <span>to</span>
-                    <select className="settings-input" value={questions[activeIdx].maxValue} onChange={e => updateQ(activeIdx, 'maxValue', parseInt(e.target.value))}>
+                    <select className="settings-input" value={questions[activeIdx].maxValue} onChange={e => updateQ(activeIdx, 'maxValue', parseInt(e.target.value))} disabled={status.published && questions[activeIdx].isOriginal}>
                       {[2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>{n}</option>)}
                     </select>
                   </div>
                   <div style={{marginTop: '12px'}}>
                     <label className="settings-label">Labels</label>
-                    <input className="settings-input" placeholder="Min label" value={questions[activeIdx].minLabel} onChange={e => updateQ(activeIdx, 'minLabel', e.target.value)} style={{marginBottom: '8px'}} />
-                    <input className="settings-input" placeholder="Max label" value={questions[activeIdx].maxLabel} onChange={e => updateQ(activeIdx, 'maxLabel', e.target.value)} />
+                    <input className="settings-input" placeholder="Min label" value={questions[activeIdx].minLabel} onChange={e => updateQ(activeIdx, 'minLabel', e.target.value)} style={{marginBottom: '8px'}} disabled={status.published && questions[activeIdx].isOriginal} />
+                    <input className="settings-input" placeholder="Max label" value={questions[activeIdx].maxLabel} onChange={e => updateQ(activeIdx, 'maxLabel', e.target.value)} disabled={status.published && questions[activeIdx].isOriginal} />
                   </div>
                 </div>
               )}
@@ -943,6 +954,7 @@ export default function FormEditPage({ params }) {
                       value={questions[activeIdx].minValueStr || ''}
                       onChange={e => updateQ(activeIdx, 'minValueStr', e.target.value)}
                       placeholder="No minimum"
+                      disabled={status.published && questions[activeIdx].isOriginal}
                     />
                   </div>
                   <div>
@@ -953,6 +965,7 @@ export default function FormEditPage({ params }) {
                       value={questions[activeIdx].maxValueStr || ''}
                       onChange={e => updateQ(activeIdx, 'maxValueStr', e.target.value)}
                       placeholder="No maximum"
+                      disabled={status.published && questions[activeIdx].isOriginal}
                     />
                   </div>
                 </div>
@@ -964,7 +977,9 @@ export default function FormEditPage({ params }) {
                   <div style={{marginBottom: '16px'}}>
                     <label className="settings-label" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                       Rows
-                      <button className="gf-btn-text" style={{fontSize: '0.75rem', color: 'var(--gf-purple)'}} onClick={() => {
+                      <button className="gf-btn-text" style={{fontSize: '0.75rem', color: 'var(--gf-purple)'}} 
+                        disabled={status.published && questions[activeIdx].isOriginal} 
+                        onClick={() => {
                         const currentOptions = questions[activeIdx].options || { rows: ['Row 1'], columns: ['Column 1'] };
                         const rows = currentOptions.rows || ['Row 1'];
                         updateQ(activeIdx, 'options', { ...currentOptions, rows: [...rows, `Row ${rows.length + 1}`] });
@@ -972,9 +987,10 @@ export default function FormEditPage({ params }) {
                     </label>
                     {(questions[activeIdx].options?.rows || ['Row 1']).map((row, rIdx) => (
                       <div key={rIdx} style={{display: 'flex', gap: '8px', marginBottom: '8px'}}>
-                        <input 
+                         <input 
                           className="settings-input" 
                           value={row} 
+                          disabled={status.published && questions[activeIdx].isOriginal}
                           onChange={e => {
                             const currentOptions = questions[activeIdx].options || { rows: ['Row 1'], columns: ['Column 1'] };
                             const rows = [...(currentOptions.rows || [])];
@@ -982,7 +998,9 @@ export default function FormEditPage({ params }) {
                             updateQ(activeIdx, 'options', { ...currentOptions, rows });
                           }}
                         />
-                        <button className="option-delete-btn" style={{padding: '4px'}} onClick={() => {
+                        <button className="option-delete-btn" style={{padding: '4px'}} 
+                          disabled={status.published && questions[activeIdx].isOriginal} 
+                          onClick={() => {
                           const currentOptions = questions[activeIdx].options || { rows: ['Row 1'], columns: ['Column 1'] };
                           const rows = (currentOptions.rows || []).filter((_, i) => i !== rIdx);
                           updateQ(activeIdx, 'options', { ...currentOptions, rows });
@@ -994,7 +1012,9 @@ export default function FormEditPage({ params }) {
                   <div>
                     <label className="settings-label" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                       Columns
-                      <button className="gf-btn-text" style={{fontSize: '0.75rem', color: 'var(--gf-purple)'}} onClick={() => {
+                      <button className="gf-btn-text" style={{fontSize: '0.75rem', color: 'var(--gf-purple)'}} 
+                        disabled={status.published && questions[activeIdx].isOriginal}
+                        onClick={() => {
                         const currentOptions = questions[activeIdx].options || { rows: ['Row 1'], columns: ['Column 1'] };
                         const cols = currentOptions.columns || ['Column 1'];
                         updateQ(activeIdx, 'options', { ...currentOptions, columns: [...cols, `Column ${cols.length + 1}`] });
@@ -1002,9 +1022,10 @@ export default function FormEditPage({ params }) {
                     </label>
                     {(questions[activeIdx].options?.columns || ['Column 1']).map((col, cIdx) => (
                       <div key={cIdx} style={{display: 'flex', gap: '8px', marginBottom: '8px'}}>
-                        <input 
+                         <input 
                           className="settings-input" 
                           value={col} 
+                          disabled={status.published && questions[activeIdx].isOriginal}
                           onChange={e => {
                             const currentOptions = questions[activeIdx].options || { rows: ['Row 1'], columns: ['Column 1'] };
                             const cols = [...(currentOptions.columns || [])];
@@ -1012,7 +1033,9 @@ export default function FormEditPage({ params }) {
                             updateQ(activeIdx, 'options', { ...currentOptions, columns: cols });
                           }}
                         />
-                        <button className="option-delete-btn" style={{padding: '4px'}} onClick={() => {
+                        <button className="option-delete-btn" style={{padding: '4px'}} 
+                          disabled={status.published && questions[activeIdx].isOriginal}
+                          onClick={() => {
                           const currentOptions = questions[activeIdx].options || { rows: ['Row 1'], columns: ['Column 1'] };
                           const cols = (currentOptions.columns || []).filter((_, i) => i !== cIdx);
                           updateQ(activeIdx, 'options', { ...currentOptions, columns: cols });
@@ -1035,6 +1058,7 @@ export default function FormEditPage({ params }) {
                       <label key={val} style={{display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', fontSize: '0.85rem', cursor: 'pointer'}}>
                         <input type="radio" name={`charType_${activeIdx}`} value={val}
                           checked={questions[activeIdx].charType === val}
+                          disabled={status.published && questions[activeIdx].isOriginal}
                           onChange={() => updateQ(activeIdx, 'charType', val)}
                           style={{accentColor: 'var(--gf-purple)'}}
                         />
@@ -1082,6 +1106,7 @@ export default function FormEditPage({ params }) {
                       placeholder="e.g. ^\\d{4}$"
                       value={questions[activeIdx].customRegex}
                       onChange={e => updateQ(activeIdx, 'customRegex', e.target.value)}
+                      disabled={status.published && questions[activeIdx].isOriginal}
                     />
                     {questions[activeIdx].customRegex && (
                       <div style={{fontSize: '0.72rem', color: '#f59e0b', marginTop: '4px', lineHeight: '1.4'}}>
@@ -1165,6 +1190,7 @@ export default function FormEditPage({ params }) {
                             type="checkbox" 
                             hidden 
                             checked={isChecked}
+                            disabled={status.published && questions[activeIdx].isOriginal}
                             onChange={(e) => {
                               let next;
                               if (e.target.checked) next = [...types, cat.value];
@@ -1198,6 +1224,7 @@ export default function FormEditPage({ params }) {
                       <select 
                         className="settings-input"
                         value={questions[activeIdx].dataSourceTable || questions[activeIdx]._usingDynamic ? 'DATABASE' : 'STATIC'}
+                        disabled={status.published && questions[activeIdx].isOriginal}
                         onChange={(e) => {
                           const val = e.target.value;
                           if (val === 'STATIC') {
@@ -1220,6 +1247,7 @@ export default function FormEditPage({ params }) {
                         className="gf-btn-text" 
                         style={{fontSize: '0.8rem', padding: '0 4px'}} 
                         title="Refresh Tables"
+                        disabled={status.published && questions[activeIdx].isOriginal}
                         onClick={async () => {
                           try {
                             const tRes = await metadataApi.getTables();

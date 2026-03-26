@@ -45,7 +45,8 @@ public class GlobalExceptionHandler {
             "Invalid operator",
             "Action type is required",
             "Rule name is required",
-            "Maximum of"
+            "Maximum of",
+            "A form with this name"
     };
 
     @ExceptionHandler(RuntimeException.class)

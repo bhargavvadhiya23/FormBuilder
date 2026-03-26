@@ -15,8 +15,13 @@ public interface FormRepository extends JpaRepository<Form, UUID> {
     List<Form> findByCreatedBy_IdAndDeleted(@Param("userId") UUID userId, @Param("deleted") boolean deleted);
 
     @Query("SELECT f FROM Form f WHERE " +
-           "((f.createdBy.id = :userId) OR " +
-           "(f.createdBy.createdByAdmin.id = :userId AND EXISTS (SELECT v FROM FormVersion v WHERE v.form = f AND v.status = 'PUBLISHED'))) " +
-           "AND f.deleted = :deleted")
+            "((f.createdBy.id = :userId) OR " +
+            "(f.createdBy.createdByAdmin.id = :userId AND EXISTS (SELECT v FROM FormVersion v WHERE v.form = f AND v.status = 'PUBLISHED'))) "
+            +
+            "AND f.deleted = :deleted")
     List<Form> findAllVisibleToUser(@Param("userId") UUID userId, @Param("deleted") boolean deleted);
+
+    boolean existsByNameAndCreatedByAndDeletedFalse(String name, com.sttl.formbuilder.entity.User createdBy);
+
+    boolean existsByNameAndCreatedByAndDeletedFalseAndIdNot(String name, com.sttl.formbuilder.entity.User createdBy, UUID id);
 }

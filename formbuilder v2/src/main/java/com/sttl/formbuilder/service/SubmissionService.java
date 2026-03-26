@@ -59,7 +59,7 @@ public class SubmissionService {
         FormVersion version = versionRepository.findById(versionId)
                 .orElseThrow(() -> new RuntimeException("Version not found"));
 
-        if (!"PUBLISHED".equals(version.getStatus())) {
+        if (!"PUBLISHED".equals(version.getStatus()) && !Boolean.TRUE.equals(version.isActive())) {
             throw new IllegalArgumentException("This form is not published yet");
         }
 
@@ -137,6 +137,9 @@ public class SubmissionService {
             quotedColumns.add("\"submitted_by\"");
             values.add(userId);
         }
+
+        quotedColumns.add("\"version_id\"");
+        values.add(versionId);
 
         String colStr = String.join(", ", quotedColumns);
         String placeholders = "?,".repeat(quotedColumns.size());
@@ -644,14 +647,14 @@ public class SubmissionService {
      * Retrieve all submissions for a given version.
      */
     public List<Map<String, Object>> getSubmissions(UUID versionId) {
-        return getSubmissions(versionId, null);
+        return getSubmissions(versionId, true, null);
     }
 
-    public List<Map<String, Object>> getSubmissions(UUID versionId, List<Long> ids) {
+    public List<Map<String, Object>> getSubmissions(UUID versionId, boolean filterByVersion, List<Long> ids) {
         FormVersion version = versionRepository.findById(versionId)
                 .orElseThrow(() -> new RuntimeException("Version not found"));
 
-        if (!"PUBLISHED".equals(version.getStatus())) {
+        if (!"PUBLISHED".equals(version.getStatus()) && !"ARCHIVED".equals(version.getStatus())) {
             return new ArrayList<>();
         }
 
@@ -704,7 +707,15 @@ public class SubmissionService {
         Integer hasDeletedCol = jdbcTemplate.queryForObject(sqlCheckDeleted, Integer.class, tableName);
         if (hasDeletedCol != null && hasDeletedCol > 0) {
             sql.append(" WHERE s.\"deleted\" = FALSE ");
+            if (filterByVersion) {
+                sql.append(" AND s.\"version_id\" = CAST(? AS UUID) ");
+            }
             hasWhere = true;
+        } else {
+            if (filterByVersion) {
+                sql.append(" WHERE s.\"version_id\" = CAST(? AS UUID) ");
+                hasWhere = true;
+            }
         }
 
         if (ids != null && !ids.isEmpty()) {
@@ -714,7 +725,11 @@ public class SubmissionService {
         }
 
         sql.append(" ORDER BY s.\"submitted_at\" DESC");
-        return jdbcTemplate.queryForList(sql.toString());
+        if (filterByVersion) {
+            return jdbcTemplate.queryForList(sql.toString(), versionId.toString());
+        } else {
+            return jdbcTemplate.queryForList(sql.toString());
+        }
     }
 
     /**
@@ -724,11 +739,11 @@ public class SubmissionService {
         FormVersion version = versionRepository.findById(versionId)
                 .orElseThrow(() -> new RuntimeException("Version not found"));
 
-        if (!"PUBLISHED".equals(version.getStatus()))
+        if (!"PUBLISHED".equals(version.getStatus()) && !"ARCHIVED".equals(version.getStatus()))
             return 0;
 
         String tableName = version.getTableName();
-        return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM \"" + tableName + "\"", Integer.class);
+        return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM \"" + tableName + "\" WHERE \"version_id\" = CAST(? AS UUID)", Integer.class, versionId.toString());
     }
 
     /**
@@ -736,19 +751,21 @@ public class SubmissionService {
      * (for dashboard stats).
      */
     public long getTotalSubmissions(UUID userId) {
-        List<FormVersion> publishedVersions = versionRepository.findByForm_CreatedBy_IdAndStatus(userId, "PUBLISHED");
+        // Fetch ALL versions for this user's forms to sum up all historical submissions
+        List<FormVersion> versions = versionRepository.findByForm_CreatedBy_Id(userId);
         long total = 0;
-        for (FormVersion version : publishedVersions) {
-            try {
-                String tableName = version.getTableName();
-                if (tableName != null && !tableName.isBlank()) {
+        for (FormVersion version : versions) {
+            String tableName = version.getTableName();
+            if (tableName != null && !tableName.isBlank()) {
+                try {
                     Integer count = jdbcTemplate.queryForObject(
-                            "SELECT COUNT(*) FROM \"" + tableName + "\"", Integer.class);
+                            "SELECT COUNT(*) FROM \"" + tableName + "\" WHERE \"version_id\" = CAST(? AS UUID)",
+                             Integer.class, version.getId().toString());
                     if (count != null)
                         total += count;
+                } catch (Exception e) {
+                    // Table might not exist or column missing, skip safely
                 }
-            } catch (Exception e) {
-                // Table may not exist yet, skip safely
             }
         }
         return total;
@@ -900,7 +917,7 @@ public class SubmissionService {
 
         List<FormField> fields = fieldRepository.findByVersion_IdOrderByFieldOrder(versionId)
                 .stream().filter(f -> !"HEADING".equalsIgnoreCase(f.getFieldType())).toList();
-        List<Map<String, Object>> submissions = getSubmissions(versionId, ids);
+        List<Map<String, Object>> submissions = getSubmissions(versionId, true, ids);
 
         StringBuilder csv = new StringBuilder();
 

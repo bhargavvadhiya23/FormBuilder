@@ -51,7 +51,8 @@ public class FormService {
             // Backfill: ensure all existing forms have deleted=false if null
             jdbcTemplate.execute("UPDATE forms SET deleted = false WHERE deleted IS NULL");
             // Backfill: ensure all existing users have soft_delete_enabled=true
-            jdbcTemplate.execute("UPDATE users SET soft_delete_enabled = true WHERE soft_delete_enabled IS NULL OR soft_delete_enabled = false");
+            jdbcTemplate.execute(
+                    "UPDATE users SET soft_delete_enabled = true WHERE soft_delete_enabled IS NULL OR soft_delete_enabled = false");
         } catch (Exception e) {
             System.err.println("Note: forms_name_key already dropped or backfill already done.");
         }
@@ -87,13 +88,13 @@ public class FormService {
 
     public Form getFormByIdAndUserId(UUID id, UUID userId, boolean allowDeleted) {
         Form form = getFormById(id);
-        
+
         User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
         boolean isAdmin = user.getRole() == com.sttl.formbuilder.Enums.Role.ADMIN;
         boolean isOwner = form.getCreatedBy() != null && form.getCreatedBy().getId().equals(userId);
-        boolean isAdminManager = form.getCreatedBy() != null && 
-                               form.getCreatedBy().getCreatedByAdmin() != null && 
-                               form.getCreatedBy().getCreatedByAdmin().getId().equals(userId);
+        boolean isAdminManager = form.getCreatedBy() != null &&
+                form.getCreatedBy().getCreatedByAdmin() != null &&
+                form.getCreatedBy().getCreatedByAdmin().getId().equals(userId);
 
         if (!isAdmin && !isOwner && !isAdminManager) {
             throw new RuntimeException("You do not have permission to access this form");
@@ -112,11 +113,18 @@ public class FormService {
     public Form createFormWithVersion(String name, String description, User currentUser) {
         // Sanitize inputs
         String cleanName = com.sttl.formbuilder.util.InputSanitizer.sanitizeText(name, 150);
-        String cleanDesc = description != null ? com.sttl.formbuilder.util.InputSanitizer.sanitizeText(description, 500) : null;
 
         if (cleanName == null || cleanName.isBlank()) {
             throw new RuntimeException("Form name must not be blank");
         }
+
+        // Uniqueness check per user (active forms only)
+        if (formRepository.existsByNameAndCreatedByAndDeletedFalse(cleanName, currentUser)) {
+            throw new RuntimeException("A form with this name already exists. Please choose a different name.");
+        }
+
+        String cleanDesc = description != null ? com.sttl.formbuilder.util.InputSanitizer.sanitizeText(description, 500)
+                : null;
 
         // Create form
         Form form = new Form();
@@ -159,6 +167,12 @@ public class FormService {
      * Get the latest published version for a form (for the public fill page).
      */
     public Optional<FormVersion> getPublishedVersion(UUID formId) {
+        // Favor the explicitly active version first
+        Optional<FormVersion> active = versionRepository.findByFormIdAndIsActiveTrue(formId);
+        if (active.isPresent()) {
+            return active;
+        }
+        // Fallback to latest published for compatibility
         return versionRepository.findTopByFormIdAndStatus(formId, "PUBLISHED");
     }
 
@@ -166,7 +180,8 @@ public class FormService {
      * Check if a form has a published version (i.e. shareable link is active).
      */
     public boolean isPublished(UUID formId) {
-        return versionRepository.findTopByFormIdAndStatus(formId, "PUBLISHED").isPresent();
+        return versionRepository.findByFormIdAndIsActiveTrue(formId).isPresent() 
+            || versionRepository.findTopByFormIdAndStatus(formId, "PUBLISHED").isPresent();
     }
 
     @Transactional
@@ -196,6 +211,12 @@ public class FormService {
         Form form = getFormById(formId);
         if (name != null && !name.isBlank()) {
             String cleanName = com.sttl.formbuilder.util.InputSanitizer.sanitizeText(name, 150);
+
+            // Uniqueness check per user (active forms only, exclude current form)
+            if (formRepository.existsByNameAndCreatedByAndDeletedFalseAndIdNot(cleanName, form.getCreatedBy(), formId)) {
+                throw new RuntimeException("A form with this name already exists. Please choose a different name.");
+            }
+
             form.setName(cleanName);
         }
         if (description != null) {
@@ -225,6 +246,13 @@ public class FormService {
         if (softDeleteEnabled && !form.isDeleted()) {
             form.setDeleted(true);
             formRepository.save(form);
+            
+            // Cascading soft-delete to versions
+            List<FormVersion> versions = versionRepository.findByFormId(formId);
+            for (FormVersion v : versions) {
+                v.setDeleted(true);
+                versionRepository.save(v);
+            }
             return;
         }
 
@@ -277,7 +305,7 @@ public class FormService {
         FormVersion version = getDraftVersion(formId)
                 .or(() -> getPublishedVersion(formId))
                 .orElseThrow(() -> new RuntimeException("No version found to publish"));
-                
+
         // Call SchemaService to create/sync the database table
         schemaService.publishVersion(version.getId());
     }
@@ -345,6 +373,7 @@ public class FormService {
             df.setDataSourceTable(sf.getDataSourceTable());
             df.setDataSourceColumn(sf.getDataSourceColumn());
             df.setIsUnique(sf.getIsUnique());
+            df.setIsOriginal(true); // Mark as original cloned field
             fieldRepository.save(df);
         }
         return savedDraft;

@@ -43,8 +43,8 @@ public class SchemaService {
         }
 
         String sanitizedFormName = InputSanitizer.sanitizeTableNamePart(version.getForm().getName());
-        String sanitizedUuid = version.getForm().getId().toString().replace("-", "_");
-        String tableName = ("form_" + sanitizedFormName + "__submission__" + sanitizedUuid).toLowerCase();
+        String shortUuid = version.getForm().getId().toString().substring(0, 8);
+        String tableName = ("form_data_" + sanitizedFormName + "_" + shortUuid).toLowerCase();
         if (tableName.length() > 63) {
             tableName = tableName.substring(0, 63);
         }
@@ -59,6 +59,7 @@ public class SchemaService {
                     .append("\"id\" BIGSERIAL PRIMARY KEY,")
                     .append("\"submitted_at\" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,")
                     .append("\"submitted_by\" UUID REFERENCES users(id),")
+                    .append("\"version_id\" UUID REFERENCES form_versions(id),") // Added version_id
                     .append("\"deleted\" BOOLEAN DEFAULT FALSE,");
 
             for (FormField field : fields) {
@@ -85,6 +86,7 @@ public class SchemaService {
         version.setStatus("PUBLISHED");
         version.setTableName(tableName);
         version.setPublishedAt(LocalDateTime.now());
+        version.setActive(true); // Marked as active on publish
         versionRepository.save(version);
 
         // Decommission any existing published version AND drop any remaining drafts
@@ -94,6 +96,7 @@ public class SchemaService {
 
             if (ov.getStatus().equals("PUBLISHED")) {
                 ov.setStatus("ARCHIVED");
+                ov.setActive(false); // Deactivate old versions
                 versionRepository.save(ov);
             } else if (ov.getStatus().equals("DRAFT")) {
                 // SRS: "Any existing drafts for the previous version are specifically dropped (not migrated)"
@@ -112,6 +115,10 @@ public class SchemaService {
         if (!existingCols.contains("submitted_by")) {
             jdbcTemplate
                     .execute("ALTER TABLE \"" + tableName + "\" ADD COLUMN \"submitted_by\" UUID REFERENCES users(id)");
+        }
+
+        if (!existingCols.contains("version_id")) {
+            jdbcTemplate.execute("ALTER TABLE \"" + tableName + "\" ADD COLUMN \"version_id\" UUID REFERENCES form_versions(id)");
         }
 
         if (!existingCols.contains("deleted")) {
