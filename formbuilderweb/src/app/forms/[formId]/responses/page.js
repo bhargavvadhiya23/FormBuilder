@@ -62,6 +62,11 @@ function validateField(field, value) {
       break;
     }
     case 'SHORT_ANSWER':
+    case 'TOGGLE':
+      if (field.required && (val === '' || val === undefined || val === null)) {
+        return `"${field.fieldLabel}" is required`;
+      }
+      break;
     default: break;
   }
   return null;
@@ -285,6 +290,17 @@ function FieldRenderer({ field, value, onChange, error, formId }) {
         </div>
       );
     }
+    case 'TOGGLE':
+      return (
+        <label className="required-toggle" style={{ display: 'block' }}>
+          <input 
+            type="checkbox" 
+            checked={value === 'true' || value === true}
+            onChange={e => onChange(e.target.checked ? 'true' : 'false')}
+          />
+          <span className="required-toggle-slider"></span>
+        </label>
+      );
     default:
       return <input className={inputClass} type="text" value={value || ''} onChange={e => onChange(e.target.value)} />;
   }
@@ -574,6 +590,7 @@ export default function ResponsesPage({ params }) {
         return Object.entries(gridData).map(([row, col]) => `${row}: ${Array.isArray(col) ? col.join(', ') : col}`).join(' | ');
       } catch { return val; }
     }
+    if (typeof val === 'boolean') return String(val);
     return val;
   };
 

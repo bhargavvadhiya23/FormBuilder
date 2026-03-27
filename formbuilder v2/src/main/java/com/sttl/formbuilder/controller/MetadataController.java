@@ -36,7 +36,7 @@ public class MetadataController {
         }
 
         UUID userId = user.getId();
-        List<FormVersion> publishedVersions = formVersionRepository.findByForm_CreatedBy_IdAndStatus(userId, "PUBLISHED");
+        List<FormVersion> publishedVersions = formVersionRepository.findByForm_CreatedBy_IdAndStatusAndForm_DeletedFalse(userId, "PUBLISHED");
 
         return publishedVersions.stream()
                 .filter(v -> v.getTableName() != null && !v.getTableName().isBlank())

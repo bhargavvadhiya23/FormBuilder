@@ -3,7 +3,7 @@ package com.sttl.formbuilder.util;
 public class SqlTypeMapper {
 
     /**
-     * Maps Google Forms field types to PostgreSQL column types.
+     * Maps Forms field types to PostgreSQL column types.
      * All choice/text types use TEXT or VARCHAR so we can store
      * comma-separated values (CHECKBOXES) or long strings safely.
      */
@@ -43,6 +43,8 @@ public class SqlTypeMapper {
             case "RANGE" -> "NUMERIC";
             case "FILE" -> "VARCHAR(1000)";
             case "SEARCH" -> "VARCHAR(500)";
+            case "TOGGLE" -> "BOOLEAN";
+
 
             // Legacy types (backward compat)
             case "TEXT" -> "VARCHAR(500)";
@@ -55,7 +57,7 @@ public class SqlTypeMapper {
                             ". Allowed: SHORT_ANSWER, PARAGRAPH, MULTIPLE_CHOICE, " +
                             "CHECKBOXES, MC_GRID, CHECKBOX_GRID, DROPDOWN, DATE, TIME, " +
                             "DATE_TIME, MONTH, WEEK, EMAIL, NUMBER, LINEAR_SCALE, RATING, " +
-                            "PHONE, URL, PASSWORD, COLOR, RANGE, FILE, SEARCH, HEADING, PAGE_BREAK");
+                            "PHONE, URL, PASSWORD, COLOR, RANGE, FILE, SEARCH, TOGGLE, HEADING, PAGE_BREAK");
         };
     }
 }

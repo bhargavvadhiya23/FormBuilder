@@ -63,6 +63,10 @@ public class SubmissionService {
             throw new IllegalArgumentException("This form is not published yet");
         }
 
+        if (version.getForm().isDeleted()) {
+            throw new IllegalArgumentException("This form has been deleted.");
+        }
+
         // ─── Unpublish Time Check ────────────────────────────────────────────
         if (version.getForm().getUnpublishTime() != null
                 && LocalDateTime.now().isAfter(version.getForm().getUnpublishTime())) {
@@ -236,6 +240,10 @@ public class SubmissionService {
             throw new IllegalArgumentException("IDs cannot be null");
         FormVersion version = versionRepository.findById(versionId)
                 .orElseThrow(() -> new RuntimeException("Version not found"));
+
+        if (version.getForm().isDeleted()) {
+            throw new IllegalArgumentException("This form has been deleted.");
+        }
 
         // ─── Unpublish Time Check ────────────────────────────────────────────
         if (version.getForm().getUnpublishTime() != null
@@ -436,7 +444,11 @@ public class SubmissionService {
                         throw new IllegalArgumentException("Invalid value for field '" + field.getFieldLabel() + "'");
                     }
                 }
+                case "TOGGLE" -> {
+                    finalValue = Boolean.parseBoolean(rawStr);
+                }
                 case "INTEGER" -> {
+
                     try {
                         finalValue = Integer.parseInt(rawStr);
                     } catch (NumberFormatException e) {

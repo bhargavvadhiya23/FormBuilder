@@ -31,6 +31,7 @@ public interface FormVersionRepository extends JpaRepository<FormVersion, UUID> 
     long countByForm_CreatedBy_IdAndStatus(UUID userId, String status);
 
     List<FormVersion> findByForm_CreatedBy_IdAndStatus(UUID userId, String status);
+    List<FormVersion> findByForm_CreatedBy_IdAndStatusAndForm_DeletedFalse(UUID userId, String status);
 
     List<FormVersion> findByFormIdAndDeletedFalseOrderByVersionNumberDesc(UUID formId);
 

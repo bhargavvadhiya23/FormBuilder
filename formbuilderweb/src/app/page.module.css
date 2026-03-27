@@ -16,7 +16,10 @@
   font-family: var(--font-geist-sans);
   background-color: var(--background);
 }
-
+input::placeholder {
+  color: #888;
+  opacity: 0.4;
+}
 .main {
   display: flex;
   min-height: 100vh;

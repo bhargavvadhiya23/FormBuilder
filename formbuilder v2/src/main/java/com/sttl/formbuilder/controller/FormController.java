@@ -403,6 +403,8 @@ public class FormController {
                 field.setDataSourceTable(req.getDataSourceTable());
                 field.setDataSourceColumn(req.getDataSourceColumn());
                 field.setIsUnique(req.getIsUnique() != null ? req.getIsUnique() : false);
+                field.setDefaultValue(req.getDefaultValue());
+                field.setCustomPlaceholder(req.getCustomPlaceholder());
 
                 return ResponseEntity.ok(fieldRepository.save(field));
         }
@@ -529,6 +531,8 @@ public class FormController {
                 field.setDataSourceTable(req.getDataSourceTable());
                 field.setDataSourceColumn(req.getDataSourceColumn());
                 field.setIsUnique(req.getIsUnique() != null ? req.getIsUnique() : false);
+                field.setDefaultValue(req.getDefaultValue());
+                field.setCustomPlaceholder(req.getCustomPlaceholder());
 
                 return ResponseEntity.ok(fieldRepository.save(field));
         }

@@ -157,15 +157,25 @@ function validateField(field, value) {
       // Then fall through to built-in format checks
       if (field.fieldType === 'EMAIL' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned))
         return 'Please enter a valid email address';
-      if (field.fieldType === 'PHONE' && !/^[+\d\s\-().]{7,20}$/.test(cleaned))
-        return 'Please enter a valid phone number';
+      if (field.fieldType === 'PHONE' && !/^\d+$/.test(cleaned))
+        return 'Please enter a valid phone number (digits only)';
       if (field.fieldType === 'URL') {
         try { new URL(cleaned); } catch { return 'Please enter a valid URL (include https://)'; }
       }
       break;
     }
+    case 'TOGGLE':
+      // Toggle is always either true or false (string "true"/"false")
+      // If required, we might want it to be "true", but usually toggle required means "must interact"?
+      // Actually for boolean toggle, required usually doesn't make sense unless it's a "I agree" checkbox.
+      // But let's follow the standard "required" which means "not empty".
+      if (field.required && (val === '' || val === undefined || val === null)) {
+        return `"${field.fieldLabel}" is required`;
+      }
+      break;
 
     default: break;
+
   }
   return null;
 }
@@ -177,22 +187,24 @@ function FieldRenderer({ field, value, onChange, error, formId }) {
 
   switch (field.fieldType) {
     case 'SHORT_ANSWER':
+      return <input className={inputClass} type="text" placeholder={field.customPlaceholder || "Your answer"} value={value || ''}
+        onChange={e => onChange(e.target.value)} maxLength={500} />;
     case 'PHONE':
-      return <input className={inputClass} type="text" placeholder="Your answer" value={value || ''}
-        onChange={e => onChange(e.target.value)} maxLength={field.fieldType === 'SHORT_ANSWER' ? 500 : 20} />;
+      return <input className={inputClass} type="text" placeholder={field.customPlaceholder || "Digits only"} value={value || ''}
+        onChange={e => onChange(e.target.value.replace(/\D/g, ''))} maxLength={20} />;
     case 'PARAGRAPH':
-      return <textarea className="fill-textarea" placeholder="Your answer" value={value || ''}
+      return <textarea className="fill-textarea" placeholder={field.customPlaceholder || "Your answer"} value={value || ''}
         onChange={e => onChange(e.target.value)} maxLength={5000} rows={3} />;
     case 'EMAIL':
-      return <input className={inputClass} type="email" placeholder="example@email.com" value={value || ''}
+      return <input className={inputClass} type="email" placeholder={field.customPlaceholder || "example@email.com"} value={value || ''}
         onChange={e => onChange(e.target.value)} />;
     case 'NUMBER':
-      return <input className={inputClass} type="number" placeholder="0" value={value || ''}
+      return <input className={inputClass} type="number" placeholder={field.customPlaceholder || "0"} value={value || ''}
         min={field.minValueStr || undefined}
         max={field.maxValueStr || undefined}
         onChange={e => onChange(e.target.value)} />;
     case 'URL':
-      return <input className={inputClass} type="url" placeholder="https://example.com" value={value || ''}
+      return <input className={inputClass} type="url" placeholder={field.customPlaceholder || "https://example.com"} value={value || ''}
         onChange={e => onChange(e.target.value)} />;
     case 'DATE':
       return <input className={inputClass} type="date" value={value || ''}
@@ -515,6 +527,18 @@ function FieldRenderer({ field, value, onChange, error, formId }) {
     case 'HEADING':
       return null; // Headings don't have inputs
 
+    case 'TOGGLE':
+      return (
+        <label className="required-toggle" style={{ display: 'block' }}>
+          <input 
+            type="checkbox" 
+            checked={value === 'true' || value === true}
+            onChange={e => onChange(e.target.checked ? 'true' : 'false')}
+          />
+          <span className="required-toggle-slider"></span>
+        </label>
+      );
+
     default:
       return <input className={inputClass} type="text" placeholder="Your answer" value={value || ''}
         onChange={e => onChange(e.target.value)} />;
@@ -540,6 +564,7 @@ export default function PublicFillPage({ params }) {
 
   const [closed, setClosed]           = useState(false);
   const [closedMessage, setClosedMessage] = useState('');
+  const [deleted, setDeleted]         = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
 
   useEffect(() => {
@@ -554,9 +579,20 @@ export default function PublicFillPage({ params }) {
       rulesApi.getPublicRules(formId).catch(() => ({ data: [] }))
     ])
       .then(([resForm, resRules]) => {
+        const formFields = Array.isArray(resForm.data.fields) ? resForm.data.fields : [];
         setFormData(resForm.data.form);
-        setFields(Array.isArray(resForm.data.fields) ? resForm.data.fields : []);
+        setFields(formFields);
         setRules((resRules.data || []).filter(r => r.enabled));
+        
+        // Initialize answers: only TOGGLE fields need a default 'false' if not specified
+        const initialAnswers = {};
+        formFields.forEach(f => {
+          if (f.fieldType === 'TOGGLE') {
+            initialAnswers[f.fieldKey] = 'false';
+          }
+        });
+        setAnswers(prev => ({ ...initialAnswers, ...prev }));
+
         if (resForm.data.alreadySubmitted) {
           setAlreadySubmitted(true);
           setSubmissionIdState(resForm.data.submissionId);
@@ -571,6 +607,8 @@ export default function PublicFillPage({ params }) {
           } catch {
             setClosedMessage(err.message);
           }
+        } else if (err.message && err.message.includes('deleted')) {
+          setDeleted(true);
         } else {
           console.error("Error loading form:", err);
           setNotFound(true);
@@ -703,6 +741,33 @@ export default function PublicFillPage({ params }) {
     try {
       // Use displayAnswers so SET_VALUE / COPY_VALUE / CLEAR_VALUE overrides are submitted
       const finalAnswers = { ...displayAnswers };
+
+      // Apply Default Values for empty fields (only if not required, though required fields must be filled)
+      fields.forEach(f => {
+        const val = finalAnswers[f.fieldKey];
+        const isEmpty = val === undefined || val === null || val === "" || val === "[]" || val === "{}";
+        
+        if (isEmpty && f.defaultValue) {
+          if (f.fieldType === 'CHECKBOXES') {
+            try {
+              if (f.defaultValue.startsWith('[')) {
+                finalAnswers[f.fieldKey] = f.defaultValue;
+              } else {
+                const arr = f.defaultValue.split(',').map(s => s.trim()).filter(Boolean);
+                finalAnswers[f.fieldKey] = JSON.stringify(arr);
+              }
+            } catch (e) {
+              finalAnswers[f.fieldKey] = '[]';
+            }
+          } else if (['MC_GRID', 'TICK_BOX_GRID'].includes(f.fieldType)) {
+            // These are stored as JSON strings in defaultValue
+            finalAnswers[f.fieldKey] = f.defaultValue;
+          } else {
+            finalAnswers[f.fieldKey] = f.defaultValue;
+          }
+        }
+      });
+
       hiddenFields.forEach(k => delete finalAnswers[k]); // don't submit hidden fields
       const res = await formsApi.submit(formId, finalAnswers);
       if (res.data.submissionId) {
@@ -746,6 +811,16 @@ export default function PublicFillPage({ params }) {
         <div className="success-icon">🔒</div>
         <div className="success-title">Form Closed</div>
         <div className="success-subtitle">{closedMessage || "This form is no longer accepting responses."}</div>
+      </div>
+    </div>
+  );
+
+  if (deleted) return (
+    <div className="fill-page">
+      <div className="success-card">
+        <div className="success-icon">🗑️</div>
+        <div className="success-title">Form Deleted</div>
+        <div className="success-subtitle">This form has been deleted.</div>
       </div>
     </div>
   );

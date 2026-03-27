@@ -74,8 +74,16 @@ public class FormService {
     }
 
     public Form getFormById(UUID id) {
-        return formRepository.findById(id)
+        return getFormById(id, false);
+    }
+
+    public Form getFormById(UUID id, boolean allowDeleted) {
+        Form form = formRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Form not found with id: " + id));
+        if (!allowDeleted && form.isDeleted()) {
+            throw new RuntimeException("This form has been deleted.");
+        }
+        return form;
     }
 
     public Optional<Form> findFormById(UUID id) {
@@ -87,7 +95,7 @@ public class FormService {
     }
 
     public Form getFormByIdAndUserId(UUID id, UUID userId, boolean allowDeleted) {
-        Form form = getFormById(id);
+        Form form = getFormById(id, allowDeleted);
 
         User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
         boolean isAdmin = user.getRole() == com.sttl.formbuilder.Enums.Role.ADMIN;
@@ -98,9 +106,6 @@ public class FormService {
 
         if (!isAdmin && !isOwner && !isAdminManager) {
             throw new RuntimeException("You do not have permission to access this form");
-        }
-        if (!allowDeleted && form.isDeleted()) {
-            throw new RuntimeException("This form is in the trash and cannot be modified.");
         }
         return form;
     }
@@ -232,7 +237,7 @@ public class FormService {
      */
     @Transactional
     public void deleteForm(UUID formId) {
-        Form form = getFormById(formId);
+        Form form = getFormById(formId, true);
         User creator = form.getCreatedBy();
 
         // Re-fetch user from DB to ensure we have the latest softDeleteEnabled setting
@@ -373,6 +378,8 @@ public class FormService {
             df.setDataSourceTable(sf.getDataSourceTable());
             df.setDataSourceColumn(sf.getDataSourceColumn());
             df.setIsUnique(sf.getIsUnique());
+            df.setDefaultValue(sf.getDefaultValue());
+            df.setCustomPlaceholder(sf.getCustomPlaceholder());
             df.setIsOriginal(true); // Mark as original cloned field
             fieldRepository.save(df);
         }

@@ -7,8 +7,8 @@ import { useApp } from '@/lib/AppContext';
 import Swal from 'sweetalert2';
 
 const FIELD_TYPES = [
-  { value: 'SHORT_ANSWER',    label: '📝 TextBox',    icon: '—' },
-  { value: 'PARAGRAPH',       label: '📄 Paragraph',       icon: '≡' },
+  { value: 'SHORT_ANSWER',    label: '📝 Text',    icon: '—' },
+  { value: 'PARAGRAPH',       label: '📄 Multiline Text',       icon: '≡' },
   { value: 'MULTIPLE_CHOICE', label: '⊙ Radio Buttons',  icon: '⊙' },
   { value: 'CHECKBOXES',      label: '☑ Checkboxes',       icon: '☑' },
   { value: 'DROPDOWN',        label: '▾ Dropdown',         icon: '▾' },
@@ -29,6 +29,7 @@ const FIELD_TYPES = [
   { value: 'CHECKBOX_GRID',   label: '▦ Tick-box Grid',    icon: '▦' },
   { value: 'PHONE',           label: '📞 Phone',           icon: '📞' },
   { value: 'URL',             label: '🔗 URL',             icon: '🔗' },
+  { value: 'TOGGLE',          label: '🔘 Boolean Toggle',  icon: '🔘' },
   // { value: 'SEARCH',          label: '🔍 Search',           icon: '🔍' },
   { value: 'HEADING',         label: '📜 Title and description', icon: '📜' },
   { value: 'PAGE_BREAK',      label: '📑 Page Break',        icon: '📑' },
@@ -68,6 +69,49 @@ function minMaxInputType(fieldType) {
   }
 }
 
+const validateDefaultValue = (q, val) => {
+  if (!val) return null;
+
+  // 1. Length Limits
+  if (q.minLength !== '' && val.length < parseInt(q.minLength)) {
+    return { message: `Default value is shorter than min length (${q.minLength})`, level: 'warning' };
+  }
+  if (q.maxLength !== '' && val.length > parseInt(q.maxLength)) {
+    return { message: `Default value exceeds max length (${q.maxLength})`, level: 'error', truncate: true };
+  }
+
+  // 2. Character Type & Special Characters
+  if (HAS_FULL_TEXT_VAL.includes(q.fieldType)) {
+    if (q.allowSpecialChars === false) {
+      if (/[^a-zA-Z0-9\s]/.test(val)) {
+        return { message: "Special characters are not allowed", level: 'error' };
+      }
+    }
+
+    if (q.charType === 'LETTERS') {
+      if (/[0-9]/.test(val)) {
+        return { message: "Numbers are not allowed when 'Letters only' is selected", level: 'error' };
+      }
+    } else if (q.charType === 'NUMBERS') {
+      if (/[a-zA-Z]/.test(val)) {
+        return { message: "Letters are not allowed when 'Numbers only' is selected", level: 'error' };
+      }
+    }
+  }
+
+  // 3. Custom Regex
+  if (q.customRegex) {
+    try {
+      const reg = new RegExp(q.customRegex);
+      if (!reg.test(val)) {
+        return { message: "Default value does not match the custom validation pattern", level: 'error' };
+      }
+    } catch (e) {}
+  }
+
+  return null;
+};
+
 // No longer using frontend makeKey, handled by backend
 function newQuestion(order) {
   return {
@@ -86,7 +130,7 @@ function newQuestion(order) {
     minValueStr: '',
     maxValueStr: '',
     // Text validation defaults
-    charType: '',
+    charType: 'LETTERS',
     minLength: '',
     maxLength: '',
     trimWhitespace: true,
@@ -97,8 +141,12 @@ function newQuestion(order) {
     allowedFileTypes: '', // Comma-separated categories
     dataSourceTable: '',
     dataSourceColumn: '',
+    defaultValue: '',
+    customPlaceholder: '',
   };
 }
+
+const HAS_PLACEHOLDER = ['SHORT_ANSWER', 'PARAGRAPH', 'EMAIL', 'NUMBER', 'PHONE', 'URL'];
 
 export default function FormEditPage({ params }) {
   const { formId } = use(params);
@@ -108,6 +156,7 @@ export default function FormEditPage({ params }) {
   const [form, setForm] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [deleted, setDeleted] = useState(false);
   const [status, setStatus] = useState({ published: false, shareLink: null });
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -145,7 +194,7 @@ export default function FormEditPage({ params }) {
           minValueStr: f.minValueStr ?? '',
           maxValueStr: f.maxValueStr ?? '',
           // Text validation
-          charType: f.charType ?? '',
+          charType: f.charType || 'LETTERS',
           minLength: f.minLength ?? '',
           maxLength: f.maxLength ?? '',
           trimWhitespace: f.trimWhitespace ?? true,
@@ -157,6 +206,8 @@ export default function FormEditPage({ params }) {
           allowedFileTypes: f.allowedFileTypes ?? '',
           dataSourceTable: f.dataSourceTable ?? '',
           dataSourceColumn: f.dataSourceColumn ?? '',
+          defaultValue: f.defaultValue ?? '',
+          customPlaceholder: f.customPlaceholder ?? '',
         })));
         
         // Try getting status separately so it doesn't break the whole page
@@ -172,7 +223,11 @@ export default function FormEditPage({ params }) {
         }
 
       } catch (e) {
-        toast.error(e.message || "Failed to load form");
+        if (e.message && e.message.toLowerCase().includes('deleted')) {
+          setDeleted(true);
+        } else {
+          toast.error(e.message || "Failed to load form");
+        }
       } finally {
         setLoading(false);
       }
@@ -330,7 +385,34 @@ export default function FormEditPage({ params }) {
   const updateQ = (idx, key, val) => {
     setQuestions(qs => {
       const next = [...qs];
-      next[idx] = { ...next[idx], [key]: val };
+      let newVal = val;
+      
+      // If setting required to true, clear defaultValue
+      if (key === 'required' && val === true) {
+        next[idx] = { ...next[idx], [key]: val, defaultValue: '' };
+      } else {
+        next[idx] = { ...next[idx], [key]: val };
+      }
+
+      // If a validation constraint was changed, validate the existing defaultValue
+      const validationKeys = ['charType', 'minLength', 'maxLength', 'allowSpecialChars', 'customRegex'];
+      if (validationKeys.includes(key) && next[idx].defaultValue) {
+        const err = validateDefaultValue(next[idx], next[idx].defaultValue);
+        if (err) {
+          if (err.level === 'error') toast.error(err.message);
+          else toast.warning(err.message);
+          
+          // Focus the default value field
+          setTimeout(() => {
+            const el = document.getElementById(`default-value-${idx}`);
+            if (el) {
+              el.focus();
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }, 100);
+        }
+      }
+
       return next;
     });
   };
@@ -390,6 +472,18 @@ export default function FormEditPage({ params }) {
           return;
         }
       }
+      
+      // Default value validation
+      if (q.defaultValue) {
+        const err = validateDefaultValue(q, q.defaultValue);
+        if (err && err.level === 'error') {
+          toast.error(`"${q.fieldLabel || 'Question'}": ${err.message}`);
+          // Set activeIdx to the question with the error to show it in settings
+          const idx = questions.indexOf(q);
+          if (idx !== -1) setActiveIdx(idx);
+          return;
+        }
+      }
     }
 
     setSaving(true);
@@ -430,6 +524,8 @@ export default function FormEditPage({ params }) {
           allowedFileTypes: q.fieldType === 'FILE' ? q.allowedFileTypes : undefined,
           dataSourceTable: q.fieldType === 'DROPDOWN' ? q.dataSourceTable : undefined,
           dataSourceColumn: q.fieldType === 'DROPDOWN' ? q.dataSourceColumn : undefined,
+          defaultValue: q.defaultValue || undefined,
+          customPlaceholder: HAS_PLACEHOLDER.includes(q.fieldType) ? (q.customPlaceholder || undefined) : undefined,
         };
 
         if (q.id) {
@@ -483,6 +579,8 @@ export default function FormEditPage({ params }) {
         customRegex: f.customRegex ?? '',
         isUnique: f.isUnique ?? false,
         allowedFileTypes: f.allowedFileTypes ?? '',
+        defaultValue: f.defaultValue ?? '',
+        customPlaceholder: f.customPlaceholder ?? '',
       };
     }));
       // Refresh status to show "Draft Pending" warning if a new draft was created
@@ -566,6 +664,16 @@ export default function FormEditPage({ params }) {
   };
 
   if (loading) return <div className="gf-loader"><div className="gf-spinner" /><span>Loading form...</span></div>;
+
+  if (deleted) return (
+    <div className="gf-error-page">
+      <div className="gf-error-card">
+        <h1>This form has been deleted.</h1>
+        <p>This form is currently in the trash. You must recover it before you can make any changes.</p>
+        <Link href="/forms" className="gf-btn gf-btn-primary">Back to My Forms</Link>
+      </div>
+    </div>
+  );
 
   return (
     <div>
@@ -766,23 +874,35 @@ export default function FormEditPage({ params }) {
               {/* Preview for simple types */}
               {!HAS_OPTIONS.includes(q.fieldType) && !HAS_SCALE.includes(q.fieldType) && !IS_LAYOUT.includes(q.fieldType) && (
                 <div style={{ marginTop: '12px' }}>
-                  <div style={{ borderBottom: '1px dashed var(--gf-border)', padding: '8px 0', fontSize: '0.9rem', color: 'var(--gf-text-placeholder)' }}>
-                    {q.fieldType === 'PARAGRAPH' ? 'Long answer text' :
-                     q.fieldType === 'DATE' ? 'MM/DD/YYYY' :
-                     q.fieldType === 'TIME' ? 'HH:MM' :
-                     q.fieldType === 'DATE_TIME' ? 'MM/DD/YYYY, HH:MM' :
-                     q.fieldType === 'MONTH' ? 'Month, YYYY' :
-                     q.fieldType === 'WEEK' ? 'Week WW, YYYY' :
-                     q.fieldType === 'EMAIL' ? 'example@email.com' :
-                     q.fieldType === 'NUMBER' ? '0' :
-                     q.fieldType === 'PASSWORD' ? '••••••••' :
-                     q.fieldType === 'COLOR' ? 'Select a color' :
-                     q.fieldType === 'FILE' ? 'Upload a file' :
-                     q.fieldType === 'PHONE' ? '+1 (___) ___-____' :
-                     q.fieldType === 'URL' ? 'https://example.com' :
-                     q.fieldType === 'SEARCH' ? '🔍 Search...' :
-                     'Short answer text'}
-                  </div>
+                  {q.fieldType === 'TOGGLE' ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 0' }}>
+                      <label className="required-toggle" style={{ pointerEvents: 'none' }}>
+                        <input type="checkbox" checked={true} readOnly />
+                        <span className="required-toggle-slider"></span>
+                      </label>
+                      <span style={{ fontSize: '0.9rem', color: 'var(--gf-text-secondary)' }}>Toggle Switch Preview</span>
+                    </div>
+                  ) : (
+                    <div style={{ borderBottom: '1px dashed var(--gf-border)', padding: '8px 0', fontSize: '0.9rem', color: 'var(--gf-text-placeholder)' }}>
+                      {q.customPlaceholder || (
+                       q.fieldType === 'PARAGRAPH' ? 'Long answer text' :
+                       q.fieldType === 'DATE' ? 'MM/DD/YYYY' :
+                       q.fieldType === 'TIME' ? 'HH:MM' :
+                       q.fieldType === 'DATE_TIME' ? 'MM/DD/YYYY, HH:MM' :
+                       q.fieldType === 'MONTH' ? 'Month, YYYY' :
+                       q.fieldType === 'WEEK' ? 'Week WW, YYYY' :
+                       q.fieldType === 'EMAIL' ? 'example@email.com' :
+                       q.fieldType === 'NUMBER' ? '0' :
+                       q.fieldType === 'PASSWORD' ? '••••••••' :
+                       q.fieldType === 'COLOR' ? 'Select a color' :
+                       q.fieldType === 'FILE' ? 'Upload a file' :
+                       q.fieldType === 'PHONE' ? '+1 (___) ___-____' :
+                       q.fieldType === 'URL' ? 'https://example.com' :
+                       q.fieldType === 'SEARCH' ? '🔍 Search...' :
+                       'Short answer text'
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -824,10 +944,10 @@ export default function FormEditPage({ params }) {
               )}
             </div>
           ))}
-
+{/* 
           <div className="add-question-fab">
             <button className="add-question-btn" onClick={() => addQuestion()} title="Add question">＋</button>
-          </div>
+          </div> */}
         </div>
 
         {/* Right Sidebar: Element Settings */}
@@ -835,42 +955,6 @@ export default function FormEditPage({ params }) {
           <div className="settings-title">Settings</div>
           {activeIdx !== null && questions[activeIdx] ? (
             <div className="settings-content">
-              <div className="settings-group">
-                <label className="settings-label">Field Type</label>
-                <select
-                  className="settings-input"
-                  value={questions[activeIdx].fieldType}
-                  disabled={status.published && questions[activeIdx].isOriginal}
-                  onChange={e => {
-                    const newType = e.target.value;
-                    const oldType = questions[activeIdx].fieldType;
-                    let newOptions = questions[activeIdx].options;
-
-                    // Initialize Grid options if switching TO a grid FROM something else
-                    if (HAS_GRID.includes(newType) && !HAS_GRID.includes(oldType)) {
-                      newOptions = { rows: ['Row 1'], columns: ['Column 1'] };
-                    } 
-                    // Reset to Array if switching FROM a grid TO a choice type
-                    else if (HAS_OPTIONS.includes(newType) && HAS_GRID.includes(oldType)) {
-                      newOptions = ['Option 1'];
-                    }
-                    // Reset to default array if it's currently an object but should be choices
-                    else if (HAS_OPTIONS.includes(newType) && !Array.isArray(questions[activeIdx].options)) {
-                      newOptions = ['Option 1'];
-                    }
-
-                    setQuestions(prev => {
-                      const next = [...prev];
-                      next[activeIdx] = { ...next[activeIdx], fieldType: newType, options: newOptions };
-                      return next;
-                    });
-                  }}
-                >
-                  {FIELD_TYPES.map(t => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
-              </div>
 
               {/* Field ID (Key) is now auto-generated on backend */}
               {/* <div className="settings-group">
@@ -893,6 +977,219 @@ export default function FormEditPage({ params }) {
                   disabled={status.published && questions[activeIdx].isOriginal}
                 />
               </div>
+
+              {!IS_LAYOUT.includes(questions[activeIdx].fieldType) && questions[activeIdx].fieldType !== 'FILE' && !questions[activeIdx].required && (
+                <div className="settings-group">
+                  <label className="settings-label">Default Value</label>
+                  {(() => {
+                    const q = questions[activeIdx];
+                    const commonProps = {
+                      className: "settings-input",
+                      value: q.defaultValue || '',
+                      onChange: (e) => updateQ(activeIdx, 'defaultValue', e.target.value),
+                      disabled: status.published && q.isOriginal,
+                    };
+
+                    if (q.fieldType === 'PARAGRAPH') {
+                      return <textarea {...commonProps} id={`default-value-${activeIdx}`} rows={3} placeholder="Long default answer..." className="settings-input settings-textarea"
+                        onBlur={(e) => {
+                          const val = e.target.value;
+                          const err = validateDefaultValue(q, val);
+                          if (err) {
+                            if (err.level === 'error') toast.error(err.message);
+                            else toast.warning(err.message);
+                            
+                            if (err.truncate && q.maxLength) {
+                              updateQ(activeIdx, 'defaultValue', val.substring(0, q.maxLength));
+                            }
+                          }
+                        }}
+                      />;
+                    }
+                    if (q.fieldType === 'NUMBER') {
+                      return <input type="number" {...commonProps} id={`default-value-${activeIdx}`} placeholder="Default number..."
+                        onBlur={(e) => {
+                          const val = Number(e.target.value);
+                          if (q.minValueStr && val < Number(q.minValueStr)) {
+                            toast.error(`Default value must be ≥ ${q.minValueStr}`);
+                            updateQ(activeIdx, 'defaultValue', q.minValueStr);
+                          } else if (q.maxValueStr && val > Number(q.maxValueStr)) {
+                            toast.error(`Default value must be ≤ ${q.maxValueStr}`);
+                            updateQ(activeIdx, 'defaultValue', q.maxValueStr);
+                          }
+                        }}
+                      />;
+                    }
+                    if (['MULTIPLE_CHOICE', 'DROPDOWN'].includes(q.fieldType)) {
+                      return (
+                        <select {...commonProps}>
+                          <option value="">-- No Default --</option>
+                          {q.options.map((opt, i) => <option key={i} value={opt}>{opt}</option>)}
+                        </select>
+                      );
+                    }
+                    if (q.fieldType === 'TOGGLE') {
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <input 
+                            type="checkbox" 
+                            checked={q.defaultValue === 'true'} 
+                            onChange={e => updateQ(activeIdx, 'defaultValue', e.target.checked ? 'true' : 'false')}
+                            style={{ width: '16px', height: '16px', accentColor: 'var(--gf-purple)' }}
+                            disabled={status.published && q.isOriginal}
+                          />
+                          <span style={{ fontSize: '0.85rem', color: 'var(--gf-text-secondary)' }}>Default to ON</span>
+                        </div>
+                      );
+                    }
+                    if (['DATE', 'TIME', 'DATE_TIME', 'MONTH', 'WEEK'].includes(q.fieldType)) {
+                      return <input type={minMaxInputType(q.fieldType)} {...commonProps} id={`default-value-${activeIdx}`}
+                        onBlur={(e) => {
+                          const val = e.target.value;
+                          if (q.minValueStr && val < q.minValueStr) {
+                             toast.error(`Default value must be on or after ${q.minValueStr}`);
+                             updateQ(activeIdx, 'defaultValue', q.minValueStr);
+                          } else if (q.maxValueStr && val > q.maxValueStr) {
+                             toast.error(`Default value must be on or before ${q.maxValueStr}`);
+                             updateQ(activeIdx, 'defaultValue', q.maxValueStr);
+                          }
+                          
+                          const err = validateDefaultValue(q, val);
+                          if (err) {
+                            if (err.level === 'error') toast.error(err.message);
+                            else toast.warning(err.message);
+                          }
+                        }}
+                      />;
+                    }
+                    if (q.fieldType === 'COLOR') {
+                      return <input type="color" {...commonProps} style={{ height: '40px', padding: '2px' }} />;
+                    }
+                    if (HAS_SCALE.includes(q.fieldType)) {
+                      return (
+                         <select {...commonProps}>
+                            <option value="">-- No Default --</option>
+                            {Array.from({ length: q.maxValue - q.minValue + 1 }, (_, i) => i + q.minValue).map(n => (
+                              <option key={n} value={n}>{n}</option>
+                            ))}
+                         </select>
+                      );
+                    }
+                    if (q.fieldType === 'CHECKBOXES') {
+                      const selected = (q.defaultValue || '').split(',').map(s => s.trim()).filter(s => s);
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {q.options.map((opt, i) => (
+                            <label key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                              <input 
+                                type="checkbox" 
+                                checked={selected.includes(opt)}
+                                onChange={e => {
+                                  let next;
+                                  if (e.target.checked) next = [...selected, opt];
+                                  else next = selected.filter(s => s !== opt);
+                                  updateQ(activeIdx, 'defaultValue', next.join(','));
+                                }}
+                                style={{ accentColor: 'var(--gf-purple)' }}
+                                disabled={status.published && q.isOriginal}
+                              />
+                              {opt}
+                            </label>
+                          ))}
+                        </div>
+                      );
+                    }
+                    if (HAS_GRID.includes(q.fieldType)) {
+                      const gridOptions = q.options || { rows: [], columns: [] };
+                      let gridDefaults = {};
+                      try { gridDefaults = JSON.parse(q.defaultValue || '{}'); } catch(e) {}
+                      
+                      return (
+                        <div style={{ overflowX: 'auto', border: '1px solid var(--gf-border)', borderRadius: '4px', padding: '8px' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                            <thead>
+                              <tr>
+                                <th></th>
+                                {gridOptions.columns.map((col, i) => <th key={i} style={{ padding: '4px' }}>{col}</th>)}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {gridOptions.rows.map((row, i) => (
+                                <tr key={i}>
+                                  <td style={{ padding: '4px', fontWeight: 'bold' }}>{row}</td>
+                                  {gridOptions.columns.map((col, j) => (
+                                    <td key={j} style={{ textAlign: 'center', padding: '4px' }}>
+                                      <input 
+                                        type={q.fieldType === 'MC_GRID' ? 'radio' : 'checkbox'}
+                                        name={`default_${q.fieldKey}_${i}`}
+                                        checked={q.fieldType === 'MC_GRID' ? gridDefaults[row] === col : (gridDefaults[row] || []).includes(col)}
+                                        disabled={status.published && q.isOriginal}
+                                        onChange={e => {
+                                          let next = { ...gridDefaults };
+                                          if (q.fieldType === 'MC_GRID') {
+                                            if (e.target.checked) next[row] = col;
+                                          } else {
+                                            let rowVals = next[row] || [];
+                                            if (e.target.checked) rowVals = [...rowVals, col];
+                                            else rowVals = rowVals.filter(v => v !== col);
+                                            next[row] = rowVals;
+                                          }
+                                          updateQ(activeIdx, 'defaultValue', JSON.stringify(next));
+                                        }}
+                                      />
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <button 
+                            className="gf-btn-text" 
+                            style={{ fontSize: '0.7rem', marginTop: '8px' }}
+                            onClick={() => updateQ(activeIdx, 'defaultValue', '')}
+                          >Clear Grid Defaults</button>
+                        </div>
+                      );
+                    }
+                    
+                    return <input type="text" {...commonProps} id={`default-value-${activeIdx}`} placeholder="Default answer..." 
+                      onChange={(e) => {
+                        let val = e.target.value;
+                        if (q.fieldType === 'PHONE') val = val.replace(/\D/g, '');
+                        updateQ(activeIdx, 'defaultValue', val);
+                      }}
+                      onBlur={(e) => {
+                        const val = e.target.value;
+                        const err = validateDefaultValue(q, val);
+                        if (err) {
+                          if (err.level === 'error') toast.error(err.message);
+                          else toast.warning(err.message);
+                          
+                          if (err.truncate && q.maxLength) {
+                            updateQ(activeIdx, 'defaultValue', val.substring(0, q.maxLength));
+                          }
+                        }
+                      }}
+                    />;
+                  })()}
+                </div>
+              )}
+
+              {HAS_PLACEHOLDER.includes(questions[activeIdx].fieldType) && (
+                <div className="settings-group">
+                  <label className="settings-label">Custom Placeholder</label>
+                  <input 
+                    className="settings-input"
+                    value={questions[activeIdx].customPlaceholder || ''}
+                    onChange={(e) => updateQ(activeIdx, 'customPlaceholder', e.target.value)}
+                    placeholder="Enter custom placeholder text..."
+                    disabled={status.published && questions[activeIdx].isOriginal}
+                  />
+                  <div style={{ fontSize: '0.72rem', color: 'var(--gf-text-secondary)', marginTop: '4px' }}>
+                    If empty, the system default will be used.
+                  </div>
+                </div>
+              )}
 
               {!IS_LAYOUT.includes(questions[activeIdx].fieldType) && (
                 <>
@@ -1053,8 +1350,8 @@ export default function FormEditPage({ params }) {
 
                   {/* Character Type */}
                   <div style={{marginBottom: '12px'}}>
-                    <label style={{fontSize: '0.8rem', color: 'var(--gf-text-secondary)', display: 'block', marginBottom: '6px'}}>Character Type</label>
-                    {[['', 'Any'], ['LETTERS', 'Letters only'], ['NUMBERS', 'Numbers only'], ['BOTH', 'Letters & Numbers']].map(([val, lbl]) => (
+                    {/* <label style={{fontSize: '0.8rem', color: 'var(--gf-text-secondary)', display: 'block', marginBottom: '6px'}}>Character Type</label> */}
+                    {[['LETTERS', 'Letters only'], ['NUMBERS', 'Numbers only'], ['BOTH', 'Letters & Numbers']].map(([val, lbl]) => (
                       <label key={val} style={{display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', fontSize: '0.85rem', cursor: 'pointer'}}>
                         <input type="radio" name={`charType_${activeIdx}`} value={val}
                           checked={questions[activeIdx].charType === val}
@@ -1122,25 +1419,27 @@ export default function FormEditPage({ params }) {
                 <div className="settings-group" style={{marginTop: '20px'}}>
                   <label className="settings-label">Text Validation</label>
 
-                  {/* Min / Max Length */}
-                  <div style={{display: 'flex', gap: '8px', marginBottom: '10px'}}>
-                    <div style={{flex: 1}}>
-                      <label style={{fontSize: '0.8rem', color: 'var(--gf-text-secondary)', display: 'block', marginBottom: '4px'}}>Min Length</label>
-                      <input type="number" min={0} className="settings-input"
-                        placeholder="None"
-                        value={questions[activeIdx].minLength}
-                        onChange={e => updateQ(activeIdx, 'minLength', e.target.value === '' ? '' : parseInt(e.target.value))}
-                      />
+                  {/* Min / Max Length — Only if NOT PHONE */}
+                  {questions[activeIdx].fieldType !== 'PHONE' && (
+                    <div style={{display: 'flex', gap: '8px', marginBottom: '10px'}}>
+                      <div style={{flex: 1}}>
+                        <label style={{fontSize: '0.8rem', color: 'var(--gf-text-secondary)', display: 'block', marginBottom: '4px'}}>Min Length</label>
+                        <input type="number" min={0} className="settings-input"
+                          placeholder="None"
+                          value={questions[activeIdx].minLength}
+                          onChange={e => updateQ(activeIdx, 'minLength', e.target.value === '' ? '' : parseInt(e.target.value))}
+                        />
+                      </div>
+                      <div style={{flex: 1}}>
+                        <label style={{fontSize: '0.8rem', color: 'var(--gf-text-secondary)', display: 'block', marginBottom: '4px'}}>Max Length</label>
+                        <input type="number" min={0} className="settings-input"
+                          placeholder="None"
+                          value={questions[activeIdx].maxLength}
+                          onChange={e => updateQ(activeIdx, 'maxLength', e.target.value === '' ? '' : parseInt(e.target.value))}
+                        />
+                      </div>
                     </div>
-                    <div style={{flex: 1}}>
-                      <label style={{fontSize: '0.8rem', color: 'var(--gf-text-secondary)', display: 'block', marginBottom: '4px'}}>Max Length</label>
-                      <input type="number" min={0} className="settings-input"
-                        placeholder="None"
-                        value={questions[activeIdx].maxLength}
-                        onChange={e => updateQ(activeIdx, 'maxLength', e.target.value === '' ? '' : parseInt(e.target.value))}
-                      />
-                    </div>
-                  </div>
+                  )}
 
                   {/* Trim + Remove spaces toggles */}
                   {[['trimWhitespace', 'Trim whitespace'], ['removeExtraSpaces', 'Remove extra spaces']].map(([key, lbl]) => (
@@ -1158,7 +1457,7 @@ export default function FormEditPage({ params }) {
                   <div style={{marginTop: '10px'}}>
                     <label style={{fontSize: '0.8rem', color: 'var(--gf-text-secondary)', display: 'block', marginBottom: '4px'}}>Custom Regex</label>
                     <input className="settings-input"
-                      placeholder="e.g. ^[a-z]+@company\\.com$"
+                      placeholder={questions[activeIdx].fieldType === 'PHONE' ? "e.g. ^\\d{10}$" : "e.g. ^[a-z]+@company\\.com$"}
                       value={questions[activeIdx].customRegex}
                       onChange={e => updateQ(activeIdx, 'customRegex', e.target.value)}
                     />
@@ -1213,7 +1512,7 @@ export default function FormEditPage({ params }) {
               )}
 
               {/* Dropdown Options Source Settings */}
-              {questions[activeIdx].fieldType === 'DROPDOWN' && (
+              {activeIdx !== null && questions[activeIdx].fieldType === 'DROPDOWN' && (
                 <div className="settings-group" style={{marginTop: '20px'}}>
                   <label className="settings-label">Options Data Source</label>
                   <div style={{marginBottom: '10px'}}>

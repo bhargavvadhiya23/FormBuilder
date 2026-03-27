@@ -101,6 +101,12 @@ public class FormField {
 	@Column(nullable = false)
 	private Boolean isUnique = false;
 
+	@Column(name = "default_value", length = 1000)
+	private String defaultValue;
+
+	@Column(length = 255)
+	private String customPlaceholder;
+
 	@Column(nullable = false)
 	private Boolean isOriginal = false;
 

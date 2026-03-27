@@ -34,7 +34,15 @@ public class PublicFormController {
     @GetMapping("/{formId}/published")
     public ResponseEntity<Map<String, Object>> getPublishedForm(@PathVariable UUID formId) {
         try {
-            Form form = formService.getFormById(formId);
+            Form form = formService.getFormById(formId, true); // Fetch even if deleted to handle it specifically
+            
+            if (form.isDeleted()) {
+                java.util.Map<String, Object> error = new java.util.HashMap<>();
+                error.put("deleted", true);
+                error.put("message", "This form has been deleted.");
+                return ResponseEntity.status(410).body(error); // 410 Gone
+            }
+
             FormVersion version = formService.getPublishedVersion(formId)
                     .orElseThrow(() -> new RuntimeException("This form is not published"));
 
@@ -176,14 +184,25 @@ public class PublicFormController {
         boolean published = formService.isPublished(formId);
         Map<String, Object> status = new java.util.HashMap<>();
 
-        if (published) {
-            FormVersion version = formService.getPublishedVersion(formId).orElse(null);
-            if (version != null && version.getForm().getUnpublishTime() != null
-                    && java.time.LocalDateTime.now().isAfter(version.getForm().getUnpublishTime())) {
-                status.put("closed", true);
-                status.put("message", "This form has been closed by the admin.");
+        try {
+            Form form = formService.getFormById(formId, true);
+            if (form.isDeleted()) {
+                status.put("deleted", true);
+                status.put("message", "This form has been deleted.");
                 return ResponseEntity.ok(status);
             }
+            
+            if (published) {
+                FormVersion version = formService.getPublishedVersion(formId).orElse(null);
+                if (version != null && version.getForm().getUnpublishTime() != null
+                        && java.time.LocalDateTime.now().isAfter(version.getForm().getUnpublishTime())) {
+                    status.put("closed", true);
+                    status.put("message", "This form has been closed by the admin.");
+                    return ResponseEntity.ok(status);
+                }
+            }
+        } catch (Exception e) {
+            status.put("error", e.getMessage());
         }
 
         status.put("published", published);

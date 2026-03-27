@@ -163,6 +163,7 @@ public class SchemaService {
         String type = fieldType.toUpperCase();
         return switch (type) {
             case "NUMBER", "DECIMAL", "LINEAR_SCALE", "RATING", "RANGE", "INTEGER" -> 0;
+            case "TOGGLE" -> false;
             default -> "";
         };
     }

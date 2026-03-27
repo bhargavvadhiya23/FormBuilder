@@ -68,4 +68,8 @@ public class AddFieldRequest {
 	private String dataSourceColumn;
 
 	private Boolean isUnique = false;
+
+	private String defaultValue;
+
+	private String customPlaceholder;
 }
