@@ -10,7 +10,7 @@ import java.util.UUID;
 
 /**
  * Stores a single business rule for a form.
- * Rules are evaluated at submission time by the Drools engine.
+ * Rules are evaluated at submission time by the rule engine.
  *
  * Example rule:
  * IF field 'country' EQUALS 'US' THEN REQUIRE field 'phone'
@@ -44,22 +44,26 @@ public class FormRule {
 
     // ─── Condition (IF side) ─────────────────────────────────────────────────
 
-    /** The field key to check in the condition, e.g. "country" */
+    /** The field key to check in the condition, e.g. "country" (LEAVE FOR MIGRATION) */
     @Column(length = 100)
     private String conditionField;
 
     /**
      * Operator: EQUALS | NOT_EQUALS | CONTAINS | STARTS_WITH | ENDS_WITH |
-     * GREATER_THAN | LESS_THAN | IS_EMPTY | IS_NOT_EMPTY | ALWAYS
+     * GREATER_THAN | LESS_THAN | IS_EMPTY | IS_NOT_EMPTY | ALWAYS (LEAVE FOR MIGRATION)
      */
     @Column(length = 30)
     private String conditionOperator;
 
     /**
-     * The value to compare against, e.g. "US" (not needed for IS_EMPTY / ALWAYS)
+     * The value to compare against, e.g. "US" (LEAVE FOR MIGRATION)
      */
     @Column(length = 500)
     private String conditionValue;
+
+    /** The new boolean expression for the condition, e.g. "age >= 18 && country == \"US\"" */
+    @Column(columnDefinition = "TEXT")
+    private String conditionExpression;
 
     // ─── Action (THEN side) ──────────────────────────────────────────────────
 
@@ -70,9 +74,14 @@ public class FormRule {
      * SHOW – mark actionField as visible (frontend hint)
      * HIDE – mark actionField as hidden (frontend hint)
      * SET_VALUE – set actionField to actionValue
+     * CALCULATE – set actionField to result of actionExpression
      */
     @Column(nullable = false, length = 30)
     private String actionType;
+    
+    /** The expression to evaluate for CALCULATE action */
+    @Column(columnDefinition = "TEXT")
+    private String actionExpression;
 
     /** The field key that the action targets (not needed for REJECT) */
     @Column(length = 100)

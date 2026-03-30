@@ -6,7 +6,7 @@ import com.sttl.formbuilder.entity.FormVersion;
 import com.sttl.formbuilder.repository.FormFieldRepository;
 import com.sttl.formbuilder.service.FormService;
 import com.sttl.formbuilder.service.SubmissionService;
-import com.sttl.formbuilder.service.DroolsRuleService;
+import com.sttl.formbuilder.service.RuleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -24,7 +24,7 @@ public class PublicFormController {
     private final FormService formService;
     private final FormFieldRepository fieldRepository;
     private final SubmissionService submissionService;
-    private final DroolsRuleService droolsRuleService;
+    private final RuleService ruleService;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     /**
@@ -87,7 +87,7 @@ public class PublicFormController {
         // Only return rules if the form is published
         formService.getPublishedVersion(formId)
                 .orElseThrow(() -> new RuntimeException("This form is not published"));
-        return ResponseEntity.ok(droolsRuleService.getRulesForForm(formId));
+        return ResponseEntity.ok(ruleService.getRulesForForm(formId));
     }
 
     /**

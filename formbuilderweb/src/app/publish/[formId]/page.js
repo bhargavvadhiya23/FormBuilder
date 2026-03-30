@@ -3,6 +3,10 @@ import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { formsApi, rulesApi } from '@/lib/api';
 import { useApp } from '@/lib/AppContext';
+import { 
+  evaluateExpression, 
+  convertLegacyToExpression 
+} from '@/lib/expressionEngine';
 import Link from 'next/link';
 
 const FILE_TYPE_MAP = {
@@ -611,7 +615,7 @@ export default function PublicFillPage({ params }) {
           setDeleted(true);
         } else {
           console.error("Error loading form:", err);
-          setNotFound(true);
+          setSubmitError(err.message || "Failed to load form. Please try again later.");
         }
       })
       .finally(() => setLoading(false));
@@ -625,33 +629,20 @@ export default function PublicFillPage({ params }) {
   const valueOverrides  = {}; // SET_VALUE / CLEAR_VALUE / COPY_VALUE results
 
   rules.forEach(rule => {
-    const { conditionField, conditionOperator, conditionValue, actionType, actionField, actionValue } = rule;
+    const { 
+      conditionField, conditionOperator, conditionValue, conditionExpression,
+      actionType, actionField, actionValue, actionExpression 
+    } = rule;
+    
     // Use the current display value (including any previous overrides) for condition check
-    const currentVal = String({ ...answers, ...valueOverrides }[conditionField] ?? '');
-    const compVal = String(conditionValue || '');
+    const currentContext = { ...answers, ...valueOverrides };
     
     let isMatch = false;
-    switch (conditionOperator) {
-      case 'EQUALS':            isMatch = currentVal.toLowerCase() === compVal.toLowerCase(); break;
-      case 'NOT_EQUALS':        isMatch = currentVal.toLowerCase() !== compVal.toLowerCase(); break;
-      case 'CONTAINS':          isMatch = currentVal.toLowerCase().includes(compVal.toLowerCase()); break;
-      case 'STARTS_WITH':       isMatch = currentVal.toLowerCase().startsWith(compVal.toLowerCase()); break;
-      case 'ENDS_WITH':         isMatch = currentVal.toLowerCase().endsWith(compVal.toLowerCase()); break;
-      case 'GREATER_THAN':      isMatch = currentVal !== '' && !isNaN(Number(currentVal)) && Number(currentVal) > Number(compVal); break;
-      case 'LESS_THAN':         isMatch = currentVal !== '' && !isNaN(Number(currentVal)) && Number(currentVal) < Number(compVal); break;
-      case 'GREATER_THAN_EQUAL':isMatch = currentVal !== '' && !isNaN(Number(currentVal)) && Number(currentVal) >= Number(compVal); break;
-      case 'LESS_THAN_EQUAL':   isMatch = currentVal !== '' && !isNaN(Number(currentVal)) && Number(currentVal) <= Number(compVal); break;
-      case 'IS_EMPTY':          isMatch = currentVal === ''; break;
-      case 'IS_NOT_EMPTY':      isMatch = currentVal !== ''; break;
-      case 'IS_TRUE':           isMatch = ['true', 'yes', '1'].includes(currentVal.toLowerCase()); break;
-      case 'IS_FALSE':          isMatch = ['false', 'no', '0'].includes(currentVal.toLowerCase()); break;
-      case 'IN_LIST':           isMatch = compVal.split(/\s*,\s*/).some(v => v.trim().toLowerCase() === currentVal.toLowerCase()); break;
-      case 'NOT_IN_LIST':       isMatch = !compVal.split(/\s*,\s*/).some(v => v.trim().toLowerCase() === currentVal.toLowerCase()); break;
-      case 'MATCHES_REGEX': 
-        try { isMatch = !new RegExp(compVal).test(currentVal); } 
-        catch { isMatch = false; }
-        break;
-      case 'ALWAYS':            isMatch = true; break;
+    if (rule.conditionExpression) {
+      isMatch = !!evaluateExpression(rule.conditionExpression, currentContext);
+    } else {
+      const expr = convertLegacyToExpression(rule);
+      isMatch = !!evaluateExpression(expr, currentContext);
     }
 
     if (isMatch) {
@@ -664,7 +655,8 @@ export default function PublicFillPage({ params }) {
       // ── Value-mutation actions ────────────────────────────────────────────
       if (actionType === 'SET_VALUE')   valueOverrides[actionField] = actionValue || '';
       if (actionType === 'CLEAR_VALUE') valueOverrides[actionField] = '';
-      if (actionType === 'COPY_VALUE')  valueOverrides[actionField] = String({ ...answers, ...valueOverrides }[actionValue] ?? '');
+      if (actionType === 'COPY_VALUE')  valueOverrides[actionField] = String(currentContext[actionValue] ?? '');
+      if (actionType === 'CALCULATE')   valueOverrides[actionField] = String(evaluateExpression(actionExpression, currentContext) ?? '');
     }
   });
 
@@ -822,6 +814,12 @@ export default function PublicFillPage({ params }) {
         <div className="success-title">Form Deleted</div>
         <div className="success-subtitle">This form has been deleted.</div>
       </div>
+    </div>
+  );
+
+  if (submitError && !formData) return (
+    <div className="fill-page">
+      <div className="gf-alert-error">{submitError}</div>
     </div>
   );
 

@@ -4,7 +4,7 @@ import java.util.*;
 import java.util.UUID;
 
 /**
- * The Drools "fact" object inserted into the KieSession for each form
+ * The "fact" object passed to the rule engine for each form
  * submission.
  * Rules read fieldValues, then append to errors / hidden / required /
  * updatedValues.

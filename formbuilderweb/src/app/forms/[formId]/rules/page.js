@@ -39,6 +39,7 @@ const ACTIONS = [
   { value: 'ENABLE',     label: '🔓 Enable field',        needsField: true,  needsValue: false },
   { value: 'CLEAR_VALUE',label: '🗑️ Clear field value',   needsField: true,  needsValue: false },
   { value: 'COPY_VALUE', label: '📋 Copy value from',     needsField: true,  needsValue: false, needsSourceField: true },
+  { value: 'CALCULATE',  label: '🧮 Calculate value',     needsField: true,  needsExpression: true },
 ];
 
 const EMPTY_RULE = {
@@ -47,9 +48,11 @@ const EMPTY_RULE = {
   conditionField: '',
   conditionOperator: 'ALWAYS',
   conditionValue: '',
+  conditionExpression: '',
   actionType: 'REQUIRE',
   actionField: '',
   actionValue: '',
+  actionExpression: '',
   priority: 100,
   enabled: true,
 };
@@ -167,12 +170,25 @@ export default function RulesPage() {
   const ruleSummary = (r) => {
     const op = OPERATORS.find(o => o.value === r.conditionOperator);
     const act = ACTIONS.find(a => a.value === r.actionType);
-    const cond = r.conditionOperator === 'ALWAYS'
-      ? 'Always'
-      : `IF [${r.conditionField}] ${op?.label?.toLowerCase()} "${r.conditionValue}"`;
-    const then = r.actionType === 'REJECT'
-      ? `REJECT: "${r.actionValue}"`
-      : `${act?.label} ${r.actionField ? `[${r.actionField}]` : ''} ${r.actionValue ? `= "${r.actionValue}"` : ''}`;
+    
+    // Condition summary
+    let cond = 'Always';
+    if (r.conditionExpression) {
+      cond = `IF ${r.conditionExpression}`;
+    } else if (r.conditionOperator !== 'ALWAYS') {
+      cond = `IF [${r.conditionField}] ${op?.label?.toLowerCase()} "${r.conditionValue}"`;
+    }
+
+    // Action summary
+    let then = '';
+    if (r.actionType === 'REJECT') {
+      then = `REJECT: "${r.actionValue}"`;
+    } else if (r.actionType === 'CALCULATE') {
+      then = `CALCULATE [${r.actionField}] = ${r.actionExpression}`;
+    } else {
+      then = `${act?.label} ${r.actionField ? `[${r.actionField}]` : ''} ${r.actionValue ? `= "${r.actionValue}"` : ''}`;
+    }
+    
     return { cond, then };
   };
 
@@ -320,6 +336,16 @@ export default function RulesPage() {
                     placeholder='e.g. "US" or "18"' />
                 </div>
               )}
+
+              <div style={{ marginTop: 16 }}>
+                <label style={labelStyle}>Advanced: Boolean Expression (Overwrites above condition)</label>
+                <p style={{ fontSize: '0.95rem', color: 'var(--gf-text-secondary)', marginTop: 1 }}>
+                  Use field keys and operators like &&, ||, !, ==, !=, &lt;, &gt;
+                </p>
+                <input style={inputStyle} value={form.conditionExpression}
+                  onChange={e => setForm(f => ({ ...f, conditionExpression: e.target.value }))}
+                  placeholder='e.g. age >= 18 && country == "US"' />
+              </div>
             </div>
 
             {/* ── Action ── */}
@@ -357,6 +383,18 @@ export default function RulesPage() {
                     placeholder={form.actionType === 'REJECT' || form.actionType === 'SHOW_ERROR'
                       ? 'e.g. Invalid selection'
                       : 'Value to set'} />
+                </div>
+              )}
+
+              {selectedAction.needsExpression && (
+                <div style={{ marginTop: 10 }}>
+                  <label style={labelStyle}>Calculation Expression *</label>
+                  <input style={inputStyle} value={form.actionExpression}
+                    onChange={e => setForm(f => ({ ...f, actionExpression: e.target.value }))}
+                    placeholder='e.g. qty * unit_price' />
+                  <p style={{ fontSize: '0.75rem', color: 'var(--gf-text-secondary)', marginTop: 4 }}>
+                    Supports +, -, *, / and field keys.
+                  </p>
                 </div>
               )}
 

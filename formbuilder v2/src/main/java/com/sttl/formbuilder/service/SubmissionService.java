@@ -19,6 +19,7 @@ import com.sttl.formbuilder.entity.FormField;
 import com.sttl.formbuilder.entity.FormVersion;
 import com.sttl.formbuilder.model.SubmissionFact;
 import com.sttl.formbuilder.repository.FormFieldRepository;
+import com.sttl.formbuilder.service.RuleService;
 import com.sttl.formbuilder.repository.FormVersionRepository;
 import com.sttl.formbuilder.util.InputSanitizer;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -34,18 +35,18 @@ public class SubmissionService {
     private final JdbcTemplate jdbcTemplate;
     private final FormVersionRepository versionRepository;
     private final FormFieldRepository fieldRepository;
-    private final DroolsRuleService droolsRuleService;
+    private final RuleService ruleService;
     private final UserRepository userRepository;
 
     public SubmissionService(JdbcTemplate jdbcTemplate,
             FormVersionRepository versionRepository,
             FormFieldRepository fieldRepository,
-            DroolsRuleService droolsRuleService,
+            RuleService ruleService,
             UserRepository userRepository) {
         this.jdbcTemplate = jdbcTemplate;
         this.versionRepository = versionRepository;
         this.fieldRepository = fieldRepository;
-        this.droolsRuleService = droolsRuleService;
+        this.ruleService = ruleService;
         this.userRepository = userRepository;
     }
 
@@ -120,9 +121,9 @@ public class SubmissionService {
         }
         // ─────────────────────────────────────────────────────────────────────
 
-        // ─── Drools Business Rules Evaluation ────────────────────────────────
+        // ─── Business Rules Evaluation ──────────────────────────────────────
         UUID formId = version.getForm().getId();
-        SubmissionFact fact = droolsRuleService.evaluateRules(formId, cleanedData);
+        SubmissionFact fact = ruleService.evaluateRules(formId, cleanedData);
         if (fact.hasErrors()) {
             throw new RuntimeException("Business rule violation: " + String.join("; ", fact.getErrors()));
         }
@@ -293,6 +294,16 @@ public class SubmissionService {
                 }
             }
         }
+        // ─────────────────────────────────────────────────────────────────────
+
+        // ─── Business Rules Evaluation ──────────────────────────────────────
+        UUID formId = version.getForm().getId();
+        SubmissionFact fact = ruleService.evaluateRules(formId, cleanedData);
+        if (fact.hasErrors()) {
+            throw new RuntimeException("Business rule violation: " + String.join("; ", fact.getErrors()));
+        }
+        // Apply any SET_VALUE overrides from rules
+        fact.getUpdatedValues().forEach(cleanedData::put);
         // ─────────────────────────────────────────────────────────────────────
 
         StringBuilder sql = new StringBuilder("UPDATE \"" + version.getTableName() + "\" SET ");

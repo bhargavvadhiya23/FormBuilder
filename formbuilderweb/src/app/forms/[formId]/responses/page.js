@@ -1,8 +1,12 @@
 'use client';
 import { useState, useEffect, use } from 'react';
 import Link from 'next/link';
-import { formsApi } from '@/lib/api';
+import { formsApi, rulesApi } from '@/lib/api';
 import { useApp } from '@/lib/AppContext';
+import { 
+  evaluateExpression, 
+  convertLegacyToExpression 
+} from '@/lib/expressionEngine';
 import Swal from 'sweetalert2';
 import DataTable from 'react-data-table-component';
 
@@ -312,6 +316,7 @@ export default function ResponsesPage({ params }) {
   const [form, setForm]         = useState(null);
   const [responses, setResponses] = useState([]);
   const [fields, setFields]     = useState([]);
+  const [rules, setRules]       = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
   const [viewingTrash, setViewingTrash] = useState(false);
@@ -335,11 +340,13 @@ export default function ResponsesPage({ params }) {
       formsApi.getById(formId),
       viewingTrash ? formsApi.getTrashSubmissions(formId) : (versionToFetch ? formsApi.getVersionSubmissions(versionToFetch) : formsApi.getResponses(formId)),
       formsApi.getPublished(formId),
+      rulesApi.getRules(formId).catch(() => ({ data: [] }))
     ];
 
-    Promise.all(apiCalls).then(([fRes, rRes, pubRes]) => {
+    Promise.all(apiCalls).then(([fRes, rRes, pubRes, rulesRes]) => {
       setForm(fRes.data);
       setResponses(Array.isArray(rRes.data) ? rRes.data : []);
+      setRules((rulesRes.data || []).filter(r => r.enabled));
       // If we fetched a specific version, use its fields. If not, use current published ones.
       if (versionToFetch) {
         formsApi.getVersionFields(versionToFetch).then(vfRes => {
@@ -422,10 +429,65 @@ export default function ResponsesPage({ params }) {
   };
 
   const handleSaveResponse = async () => {
+    // ─── Rule Evaluation for Final Submission ───────────────────────────
+    const hiddenFields = new Set();
+    const dynamicRequired = new Set();
+    const valueOverrides = {};
+    
+    rules.forEach(rule => {
+      const { conditionField, conditionOperator, conditionValue, conditionExpression, actionType, actionField, actionValue, actionExpression } = rule;
+      const currentContext = { ...modalAnswers, ...valueOverrides };
+      let isMatch = false;
+
+      if (conditionExpression) {
+        isMatch = !!evaluateExpression(conditionExpression, currentContext);
+      } else {
+        const currentVal = String(currentContext[conditionField] ?? '');
+        const compVal = String(conditionValue || '');
+        switch (conditionOperator) {
+            case 'EQUALS':            isMatch = currentVal.toLowerCase() === compVal.toLowerCase(); break;
+            case 'NOT_EQUALS':        isMatch = currentVal.toLowerCase() !== compVal.toLowerCase(); break;
+            case 'CONTAINS':          isMatch = currentVal.toLowerCase().includes(compVal.toLowerCase()); break;
+            case 'STARTS_WITH':       isMatch = currentVal.toLowerCase().startsWith(compVal.toLowerCase()); break;
+            case 'ENDS_WITH':         isMatch = currentVal.toLowerCase().endsWith(compVal.toLowerCase()); break;
+            case 'GREATER_THAN':      isMatch = currentVal !== '' && !isNaN(Number(currentVal)) && Number(currentVal) > Number(compVal); break;
+            case 'LESS_THAN':         isMatch = currentVal !== '' && !isNaN(Number(currentVal)) && Number(currentVal) < Number(compVal); break;
+            case 'GREATER_THAN_EQUAL':isMatch = currentVal !== '' && !isNaN(Number(currentVal)) && Number(currentVal) >= Number(compVal); break;
+            case 'LESS_THAN_EQUAL':   isMatch = currentVal !== '' && !isNaN(Number(currentVal)) && Number(currentVal) <= Number(compVal); break;
+            case 'IS_EMPTY':          isMatch = currentVal === ''; break;
+            case 'IS_NOT_EMPTY':      isMatch = currentVal !== ''; break;
+            case 'IS_TRUE':           isMatch = ['true', 'yes', '1'].includes(currentVal.toLowerCase()); break;
+            case 'IS_FALSE':          isMatch = ['false', 'no', '0'].includes(currentVal.toLowerCase()); break;
+            case 'IN_LIST':           isMatch = compVal.split(/\s*,\s*/).some(v => v.trim().toLowerCase() === currentVal.toLowerCase()); break;
+            case 'NOT_IN_LIST':       isMatch = !compVal.split(/\s*,\s*/).some(v => v.trim().toLowerCase() === currentVal.toLowerCase()); break;
+            case 'MATCHES_REGEX': 
+              try { isMatch = new RegExp(compVal).test(currentVal); } 
+              catch { isMatch = false; }
+              break;
+            case 'ALWAYS':            isMatch = true; break;
+        }
+      }
+
+      if (isMatch) {
+        if (actionType === 'HIDE') hiddenFields.add(actionField);
+        if (actionType === 'SHOW') hiddenFields.delete(actionField);
+        if (actionType === 'REQUIRE') dynamicRequired.add(actionField);
+        if (actionType === 'SET_VALUE') valueOverrides[actionField] = actionValue || '';
+        if (actionType === 'CLEAR_VALUE') valueOverrides[actionField] = '';
+        if (actionType === 'COPY_VALUE') valueOverrides[actionField] = String(currentContext[actionValue] ?? '');
+        if (actionType === 'CALCULATE') valueOverrides[actionField] = String(evaluateExpression(actionExpression, currentContext) ?? '');
+      }
+    });
+
+    const finalAnswers = { ...modalAnswers, ...valueOverrides };
+    // ───────────────────────────────────────────────────────────────────
+
     // Validation
     const newErrors = {};
     fields.forEach(f => {
-      const err = validateField(f, modalAnswers[f.fieldKey]);
+      if (f.fieldType === 'HEADING' || hiddenFields.has(f.fieldKey)) return;
+      const fv = { ...f, required: f.required || dynamicRequired.has(f.fieldKey) };
+      const err = validateField(fv, finalAnswers[f.fieldKey]);
       if (err) newErrors[f.fieldKey] = err;
     });
 
@@ -434,13 +496,16 @@ export default function ResponsesPage({ params }) {
       return;
     }
 
+    // Don't submit hidden fields
+    hiddenFields.forEach(k => delete finalAnswers[k]);
+
     setSaving(true);
     try {
       if (editingResponse) {
-        await formsApi.updateResponse(formId, editingResponse.id, modalAnswers);
+        await formsApi.updateResponse(formId, editingResponse.id, finalAnswers);
         toast.success("Response updated");
       } else {
-        await formsApi.submit(formId, modalAnswers);
+        await formsApi.submit(formId, finalAnswers);
         toast.success("Response added");
       }
       setIsModalOpen(false);
@@ -1033,29 +1098,81 @@ export default function ResponsesPage({ params }) {
             </div>
             <div className="modal-body" style={{ background: 'var(--gf-bg)' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {fields.filter(f => f.fieldType !== 'HEADING').map(field => (
-                  <div key={field.id} className="gf-card" style={{ padding: '16px', border: modalErrors[field.fieldKey] ? '1px solid var(--gf-red)' : '1px solid var(--gf-border)' }}>
-                    <div style={{ fontWeight: 500, marginBottom: '8px', fontSize: '0.9rem' }}>
-                      {field.fieldLabel} {field.required && <span style={{ color: 'var(--gf-red)' }}>*</span>}
-                    </div>
-                    <FieldRenderer 
-                      field={field} 
-                      value={modalAnswers[field.fieldKey]} 
-                      onChange={val => {
-                        setModalAnswers(a => ({ ...a, [field.fieldKey]: val }));
-                        setModalErrors(e => ({ ...e, [field.fieldKey]: null }));
-                      }}
-                      error={!!modalErrors[field.fieldKey]}
-                      formId={formId}
-                    />
-                    {modalErrors[field.fieldKey] && (
-                      <div style={{ color: 'var(--gf-red)', fontSize: '0.75rem', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
-                        {modalErrors[field.fieldKey]}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                {(() => {
+                  const hiddenFields = new Set();
+                  const dynamicRequired = new Set();
+                  const dynamicErrors = {};
+                  const disabledFields = new Set();
+                  const valueOverrides = {};
+                  
+                  rules.forEach(rule => {
+                    const { 
+                      conditionField, conditionOperator, conditionValue, conditionExpression,
+                      actionType, actionField, actionValue, actionExpression 
+                    } = rule;
+                    
+                    const currentContext = { ...modalAnswers, ...valueOverrides };
+                    let isMatch = false;
+
+                    if (rule.conditionExpression) {
+                      isMatch = !!evaluateExpression(rule.conditionExpression, currentContext);
+                    } else {
+                      const expr = convertLegacyToExpression(rule);
+                      isMatch = !!evaluateExpression(expr, currentContext);
+                    }
+
+                    if (isMatch) {
+                      if (actionType === 'HIDE') hiddenFields.add(actionField);
+                      if (actionType === 'SHOW') hiddenFields.delete(actionField);
+                      if (actionType === 'REQUIRE') dynamicRequired.add(actionField);
+                      if (actionType === 'DISABLE') disabledFields.add(actionField);
+                      if (actionType === 'ENABLE') disabledFields.delete(actionField);
+                      if (actionType === 'SHOW_ERROR') dynamicErrors[actionField] = actionValue;
+                      
+                      if (actionType === 'SET_VALUE') valueOverrides[actionField] = actionValue || '';
+                      if (actionType === 'CLEAR_VALUE') valueOverrides[actionField] = '';
+                      if (actionType === 'COPY_VALUE') valueOverrides[actionField] = String(currentContext[actionValue] ?? '');
+                      if (actionType === 'CALCULATE') valueOverrides[actionField] = String(evaluateExpression(actionExpression, currentContext) ?? '');
+                    }
+                  });
+
+                  // We don't want to loop endlessly if calculations keep changing things, 
+                  // but in React render this is tricky. However, modalAnswers is stable.
+                  // For now, we just merge and render.
+                  const displayAnswers = { ...modalAnswers, ...valueOverrides };
+
+                  return fields
+                    .filter(f => f.fieldType !== 'HEADING' && !hiddenFields.has(f.fieldKey))
+                    .map(field => {
+                      const isReq = field.required || dynamicRequired.has(field.fieldKey);
+                      const hasError = modalErrors[field.fieldKey] || dynamicErrors[field.fieldKey];
+                      return (
+                        <div key={field.id} className="gf-card" style={{ padding: '16px', border: hasError ? '1px solid var(--gf-red)' : '1px solid var(--gf-border)' }}>
+                          <div style={{ fontWeight: 500, marginBottom: '8px', fontSize: '0.9rem' }}>
+                            {field.fieldLabel} {isReq && <span style={{ color: 'var(--gf-red)' }}>*</span>}
+                          </div>
+                          <fieldset disabled={disabledFields.has(field.fieldKey)} style={{ border: 'none', padding: 0, margin: 0 }}>
+                            <FieldRenderer 
+                              field={field} 
+                              value={displayAnswers[field.fieldKey]} 
+                              onChange={val => {
+                                setModalAnswers(a => ({ ...a, [field.fieldKey]: val }));
+                                setModalErrors(e => ({ ...e, [field.fieldKey]: null }));
+                              }}
+                              error={!!hasError}
+                              formId={formId}
+                            />
+                          </fieldset>
+                          {hasError && (
+                            <div style={{ color: 'var(--gf-red)', fontSize: '0.75rem', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
+                              {hasError}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    });
+                })()}
               </div>
             </div>
             <div className="modal-footer">

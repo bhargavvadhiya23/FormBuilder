@@ -3,6 +3,10 @@ import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { formsApi, rulesApi } from '@/lib/api';
 import { useApp } from '@/lib/AppContext';
+import { 
+  evaluateExpression, 
+  convertLegacyToExpression 
+} from '@/lib/expressionEngine';
 import Link from 'next/link';
 
 const FILE_TYPE_MAP = {
@@ -294,43 +298,46 @@ export default function PublicEditPage({ params }) {
     })
     .catch(err => {
       console.error(err);
-      setError('Failed to load your response.');
+      setError(err.message || 'Failed to load your response.');
     })
     .finally(() => setLoading(false));
   }, [formId, submissionId, isAuthLoaded, user, router]);
 
   // Rule evaluation
-  const hiddenFields = new Set();
+  const hiddenFields    = new Set();
   const dynamicRequired = new Set();
-  const disabledFields = new Set();
-  const valueOverrides = {};
+  const dynamicErrors   = {};
+  const disabledFields  = new Set();
+  const valueOverrides  = {};
 
   rules.forEach(rule => {
-    const { conditionField, conditionOperator, conditionValue, actionType, actionField, actionValue } = rule;
-    const currentVal = String({ ...answers, ...valueOverrides }[conditionField] ?? '');
-    const compVal = String(conditionValue || '');
+    const { 
+      conditionField, conditionOperator, conditionValue, conditionExpression,
+      actionType, actionField, actionValue, actionExpression 
+    } = rule;
+    
+    const currentContext = { ...answers, ...valueOverrides };
     let isMatch = false;
 
-    switch (conditionOperator) {
-      case 'EQUALS':            isMatch = currentVal.toLowerCase() === compVal.toLowerCase(); break;
-      case 'NOT_EQUALS':        isMatch = currentVal.toLowerCase() !== compVal.toLowerCase(); break;
-      case 'CONTAINS':          isMatch = currentVal.toLowerCase().includes(compVal.toLowerCase()); break;
-      case 'IS_EMPTY':          isMatch = currentVal === ''; break;
-      case 'IS_NOT_EMPTY':      isMatch = currentVal !== ''; break;
-      case 'GREATER_THAN':      isMatch = currentVal !== '' && !isNaN(Number(currentVal)) && Number(currentVal) > Number(compVal); break;
-      case 'LESS_THAN':         isMatch = currentVal !== '' && !isNaN(Number(currentVal)) && Number(currentVal) < Number(compVal); break;
-      case 'ALWAYS':            isMatch = true; break;
-      default: break;
+    if (rule.conditionExpression) {
+      isMatch = !!evaluateExpression(rule.conditionExpression, currentContext);
+    } else {
+      const expr = convertLegacyToExpression(rule);
+      isMatch = !!evaluateExpression(expr, currentContext);
     }
 
     if (isMatch) {
-      if (actionType === 'HIDE') hiddenFields.add(actionField);
-      if (actionType === 'SHOW') hiddenFields.delete(actionField);
-      if (actionType === 'REQUIRE') dynamicRequired.add(actionField);
-      if (actionType === 'DISABLE') disabledFields.add(actionField);
-      if (actionType === 'ENABLE') disabledFields.delete(actionField);
-      if (actionType === 'SET_VALUE') valueOverrides[actionField] = actionValue || '';
+      if (actionType === 'HIDE')        hiddenFields.add(actionField);
+      if (actionType === 'SHOW')        hiddenFields.delete(actionField);
+      if (actionType === 'REQUIRE')     dynamicRequired.add(actionField);
+      if (actionType === 'DISABLE')     disabledFields.add(actionField);
+      if (actionType === 'ENABLE')      disabledFields.delete(actionField);
+      if (actionType === 'SHOW_ERROR')  dynamicErrors[actionField] = actionValue;
+      
+      if (actionType === 'SET_VALUE')   valueOverrides[actionField] = actionValue || '';
       if (actionType === 'CLEAR_VALUE') valueOverrides[actionField] = '';
+      if (actionType === 'COPY_VALUE')  valueOverrides[actionField] = String(currentContext[actionValue] ?? '');
+      if (actionType === 'CALCULATE')   valueOverrides[actionField] = String(evaluateExpression(actionExpression, currentContext) ?? '');
     }
   });
 
@@ -463,13 +470,20 @@ export default function PublicEditPage({ params }) {
                     <FieldRenderer
                       field={field}
                       value={displayAnswers[field.fieldKey]}
-                      onChange={val => setAnswers(a => ({ ...a, [field.fieldKey]: val }))}
-                      error={!!errors[field.fieldKey]}
+                      onChange={val => {
+                        setAnswers(a => ({ ...a, [field.fieldKey]: val }));
+                        setErrors(e => ({ ...e, [field.fieldKey]: null }));
+                      }}
+                      error={!!errors[field.fieldKey] || !!dynamicErrors[field.fieldKey]}
                       formId={formId}
                     />
                   </fieldset>
                 )}
-                {errors[field.fieldKey] && <div className="fill-question-error">{errors[field.fieldKey]}</div>}
+                {(errors[field.fieldKey] || dynamicErrors[field.fieldKey]) && (
+                  <div className="fill-question-error">
+                    <span>⚠</span> {errors[field.fieldKey] || dynamicErrors[field.fieldKey]}
+                  </div>
+                )}
               </div>
             );
           })}
