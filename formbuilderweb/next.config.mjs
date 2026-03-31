@@ -13,7 +13,7 @@ const nextConfig = {
         destination: 'http://localhost:8080/admin/api/:path*',
       },
       {
-        source: '/publish/:id/:path(status|published|rules|submit|submissions|fields)/:extra*',
+        source: '/publish/:id/:path(status|published|rules|submit|submissions|fields|draft)/:extra*',
         destination: 'http://localhost:8080/publish/:id/:path/:extra*',
       }
     ];

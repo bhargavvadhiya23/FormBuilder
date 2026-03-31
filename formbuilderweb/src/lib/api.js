@@ -82,7 +82,9 @@ export const formsApi = {
   updatePublicResponse: (id, responseId, data) => api.put(`/publish/${id}/submissions/${responseId}`, data),
 
   // Submissions (admin managed)
-  submit:         (id, data)          => api.post(`/publish/${id}/submit`, data),
+  submit:         (id, data, status = 'COMPLETED') => api.post(`/publish/${id}/submit`, { ...data, status }),
+  getDraft:       (id)                => api.get(`/publish/${id}/draft`),
+  saveDraft:      (id, data)          => api.post(`/publish/${id}/submit`, { ...data, status: 'DRAFT' }),
   getResponses:   (id)                => api.get(`/admin/api/forms/${id}/submissions`),
   getTrashSubmissions: (id)            => api.get(`/admin/api/forms/${id}/submissions/trash`),
   getResponseCount:(id)               => api.get(`/admin/api/forms/${id}/submissions/count`),

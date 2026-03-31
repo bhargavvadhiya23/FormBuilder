@@ -570,6 +570,15 @@ export default function PublicFillPage({ params }) {
   const [closedMessage, setClosedMessage] = useState('');
   const [deleted, setDeleted]         = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState(null);
+  const [draftDiscarded, setDraftDiscarded] = useState(false);
+  const [currentVersionId, setCurrentVersionId] = useState('');
+  const [isUserInteracted, setIsUserInteracted] = useState(false);
+  const [showSelectionScreen, setShowSelectionScreen] = useState(false);
+  const [isNewResponse, setIsNewResponse] = useState(false);
+  const [isContinuingDraft, setIsContinuingDraft] = useState(false);
+  const [hasDraftState, setHasDraftState] = useState(false);
 
   useEffect(() => {
     if (isAuthLoaded && !user) {
@@ -582,11 +591,20 @@ export default function PublicFillPage({ params }) {
       formsApi.getPublished(formId),
       rulesApi.getPublicRules(formId).catch(() => ({ data: [] }))
     ])
-      .then(([resForm, resRules]) => {
+      .then(async ([resForm, resRules]) => {
         const formFields = Array.isArray(resForm.data.fields) ? resForm.data.fields : [];
+        const publishedVersionId = resForm.data.versionId;
         setFormData(resForm.data.form);
         setFields(formFields);
         setRules((resRules.data || []).filter(r => r.enabled));
+        setCurrentVersionId(publishedVersionId);
+
+        // Check for version update (discarded draft warning)
+        const lastVersion = localStorage.getItem(`form_${formId}_version`);
+        if (lastVersion && lastVersion !== publishedVersionId) {
+            setDraftDiscarded(true);
+        }
+        localStorage.setItem(`form_${formId}_version`, publishedVersionId);
         
         // Initialize answers: only TOGGLE fields need a default 'false' if not specified
         const initialAnswers = {};
@@ -595,11 +613,47 @@ export default function PublicFillPage({ params }) {
             initialAnswers[f.fieldKey] = 'false';
           }
         });
-        setAnswers(prev => ({ ...initialAnswers, ...prev }));
+
+        console.log("DEBUG: Form loaded. hasDraft:", resForm.data.hasDraft, "alreadySubmitted:", resForm.data.alreadySubmitted);
+        
+        // Load draft if available
+        if (resForm.data.hasDraft) {
+          try {
+            console.log("DEBUG: Attempting to fetch draft...");
+            const resDraft = await formsApi.getDraft(formId);
+            if (resDraft.data) {
+                console.log("DEBUG: Draft data received:", resDraft.data);
+                // Filter out metadata fields, only keep actual field answers
+                const draftData = { ...resDraft.data };
+                ['id', 'status', 'version_id', 'submitted_at', 'submitted_by', 'deleted'].forEach(key => delete draftData[key]);
+                
+                // Merge draft data into initialAnswers
+                Object.assign(initialAnswers, draftData);
+            }
+          } catch (e) {
+            console.warn("Failed to load draft:", e);
+          }
+        }
+        
+        console.log("DEBUG: Final answers before setAnswers:", initialAnswers);
+        setAnswers(prev => ({ ...prev, ...initialAnswers }));
 
         if (resForm.data.alreadySubmitted) {
           setAlreadySubmitted(true);
           setSubmissionIdState(resForm.data.submissionId);
+        }
+
+        if (resForm.data.hasDraft) {
+          setHasDraftState(true);
+        }
+
+        // Logic to show selection screen
+        const multipleAllowed = !resForm.data.form?.oneSubmissionPerUser;
+        const hasCompleted = resForm.data.alreadySubmitted;
+        const hasDraft = resForm.data.hasDraft;
+
+        if ((multipleAllowed && (hasCompleted || hasDraft)) || (!multipleAllowed && hasCompleted && hasDraft)) {
+           setShowSelectionScreen(true);
         }
       })
       .catch((err) => {
@@ -620,6 +674,26 @@ export default function PublicFillPage({ params }) {
       })
       .finally(() => setLoading(false));
   }, [formId, isAuthLoaded, user, router]);
+
+  // ─── Auto-Save Effect ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!formData || submitted || submitting || !user || !isUserInteracted) return;
+    
+    const timer = setTimeout(async () => {
+      setDraftSaving(true);
+      try {
+        await formsApi.saveDraft(formId, answers);
+        setDraftSavedAt(new Date());
+      } catch (e) {
+        console.error("Auto-save failed:", e);
+      } finally {
+        setDraftSaving(false);
+      }
+    }, 2000); // 2 second debounce
+
+    return () => clearTimeout(timer);
+  }, [answers, formId, formData, submitted, submitting, user, isUserInteracted, isNewResponse]);
+  // ───────────────────────────────────────────────────────────────────────
 
   // Evaluate rules dynamically (runs every render, reads current answers)
   const hiddenFields    = new Set();
@@ -666,6 +740,7 @@ export default function PublicFillPage({ params }) {
   const setAnswer = (key, val) => {
     setAnswers(a => ({ ...a, [key]: val }));
     setErrors(e => ({ ...e, [key]: null })); // clear error on change
+    setIsUserInteracted(true);
   };
 
   const sortedFields = [...fields].sort((a,b) => a.fieldOrder - b.fieldOrder);
@@ -773,12 +848,25 @@ export default function PublicFillPage({ params }) {
     }
   };
 
+  const handleCreateNew = () => {
+    setAnswers({});
+    setErrors({});
+    setIsNewResponse(true);
+    setShowSelectionScreen(false);
+    setAlreadySubmitted(false); // Hide the "already submitted" block if we are starting new
+    // Clear draft state locally so we don't accidentally load it
+    setHasDraftState(false);
+  };
+
   const resetForm = () => {
     setAnswers({});
     setErrors({});
     setSubmitted(false);
     setSubmitError('');
     setCurrentPage(0);
+    setIsNewResponse(true);
+    setShowSelectionScreen(false);
+    setAlreadySubmitted(false);
   };
 
   if (loading || !isAuthLoaded || !user) return (
@@ -823,7 +911,58 @@ export default function PublicFillPage({ params }) {
     </div>
   );
 
-  if (alreadySubmitted) return (
+  if (showSelectionScreen && !isNewResponse) return (
+    <div className="fill-page">
+      <div className="fill-form-wrap">
+        <div className="success-card">
+          <div className="success-icon">📝</div>
+          <div className="success-title">Choose how to continue</div>
+          <div className="success-subtitle">
+            {formData?.oneSubmissionPerUser 
+              ? `You've already responded to ${formData?.name}. Choose an option below:`
+              : `You can submit multiple responses for ${formData?.name}.`}
+          </div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '24px', width: '100%' }}>
+            {hasDraftState && (
+              <button 
+                className="gf-btn gf-btn-purple" 
+                onClick={() => { setShowSelectionScreen(false); setIsContinuingDraft(true); }}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              >
+                <span className="material-symbols-outlined">edit_note</span>
+                Continue Draft
+              </button>
+            )}
+            
+            {alreadySubmitted && (
+              <Link 
+                href={`/publish/${formId}/edit/${submissionIdState}`} 
+                className="gf-btn gf-btn-outline" 
+                style={{ textDecoration: 'none', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              >
+                <span className="material-symbols-outlined">history</span>
+                Edit Previous Response
+              </Link>
+            )}
+            
+            {!formData?.oneSubmissionPerUser && (
+              <button 
+                className="gf-btn gf-btn-ghost" 
+                onClick={handleCreateNew}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', border: '1px solid #ddd' }}
+              >
+                <span className="material-symbols-outlined">add_circle</span>
+                Create New Response
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (alreadySubmitted && formData?.oneSubmissionPerUser && !isNewResponse && !isContinuingDraft && !showSelectionScreen) return (
     <div className="fill-page">
       <div className="fill-form-wrap">
         <div className="success-card">
@@ -873,7 +1012,28 @@ export default function PublicFillPage({ params }) {
           <div className="fill-header">
             <div className="fill-form-title">{formData?.name}</div>
             {formData?.description && (
-              <div className="fill-form-desc">{formData.description}</div>
+              <p className="fill-description">{formData.description}</p>
+            )}
+
+            {draftDiscarded && (
+              <div style={{
+                background: '#fff3cd',
+                color: '#856404',
+                padding: '12px 16px',
+                borderRadius: '8px',
+                marginBottom: '20px',
+                fontSize: '0.9rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                border: '1px solid #ffeeba'
+              }}>
+                <span className="material-symbols-outlined">warning</span>
+                <span>Your previous draft was discarded because the form was updated to a new version.</span>
+                <button type="button" onClick={() => setDraftDiscarded(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>close</span>
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -914,30 +1074,30 @@ export default function PublicFillPage({ params }) {
                       {field.fieldLabel}
                       {isReq && !isHeading && <span className="fill-question-required">*</span>}
                     </div>
-                {field.helpText && (
-                  <div className={field.fieldType === 'HEADING' ? 'fill-question-help' : 'fill-question-help'}>
-                    {field.helpText}
+                    {field.helpText && (
+                      <div className="fill-question-help">
+                        {field.helpText}
+                      </div>
+                    )}
+                    {field.fieldType !== 'HEADING' && (
+                      <fieldset disabled={disabledFields.has(field.fieldKey)} style={{ border: 'none', padding: 0, margin: 0, marginTop: '8px' }}>
+                        <FieldRenderer
+                          field={field}
+                          value={displayAnswers[field.fieldKey]}
+                          onChange={val => setAnswer(field.fieldKey, val)}
+                          error={!!errors[field.fieldKey] || !!dynamicErrors[field.fieldKey]}
+                          formId={formId}
+                        />
+                      </fieldset>
+                    )}
+                    {(errors[field.fieldKey] || dynamicErrors[field.fieldKey]) && (
+                      <div className="fill-question-error">
+                        <span>⚠</span> {errors[field.fieldKey] || dynamicErrors[field.fieldKey]}
+                      </div>
+                    )}
                   </div>
-                )}
-                {field.fieldType !== 'HEADING' && (
-                  <fieldset disabled={disabledFields.has(field.fieldKey)} style={{ border: 'none', padding: 0, margin: 0, marginTop: '8px' }}>
-                    <FieldRenderer
-                      field={field}
-                      value={displayAnswers[field.fieldKey]}
-                      onChange={val => setAnswer(field.fieldKey, val)}
-                      error={!!errors[field.fieldKey] || !!dynamicErrors[field.fieldKey]}
-                      formId={formId}
-                    />
-                  </fieldset>
-                )}
-                {(errors[field.fieldKey] || dynamicErrors[field.fieldKey]) && (
-                  <div className="fill-question-error">
-                    <span>⚠</span> {errors[field.fieldKey] || dynamicErrors[field.fieldKey]}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
 
             {submitError && (
               <div className="gf-alert-error" style={{ marginBottom: '12px' }}>
@@ -945,38 +1105,37 @@ export default function PublicFillPage({ params }) {
               </div>
             )}
 
-            <div className="fill-navigation-row" style={{ display: 'flex', justifyContent: 'space-between', marginTop: '24px' }}>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                {currentPage > 0 && (
-                  <button type="button" className="gf-btn gf-btn-ghost" onClick={handleBack}>
-                    Back
-                  </button>
-                )}
-                {currentPage < pages.length - 1 ? (
-                  <button type="button" className="gf-btn gf-btn-purple" onClick={handleNext}>
-                    Next
-                  </button>
-                ) : (
-                  <button type="submit" className="fill-submit-btn" disabled={submitting}>
-                    {submitting ? 'Submitting...' : 'Submit'}
-                  </button>
-                )}
-              </div>
+            <div className="fill-submit-row" style={{ marginTop: '24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+              {currentPage > 0 && (
+                <button type="button" className="gf-btn gf-btn-ghost" onClick={handleBack}>
+                  Back
+                </button>
+              )}
+              {currentPage < pages.length - 1 ? (
+                <button type="button" className="fill-submit-btn" onClick={handleNext}>
+                  Next
+                </button>
+              ) : (
+                <button type="submit" className="fill-submit-btn" disabled={submitting}>
+                  {submitting ? 'Submitting...' : formData?.buttonText || 'Submit'}
+                </button>
+              )}
               
-              <button type="button" className="fill-clear-btn" onClick={() => {
-                resetForm();
-                setCurrentPage(0);
-              }}>
+              <button type="button" className="fill-clear-btn" style={{ background: 'none', border: 'none', color: 'var(--gf-purple)', cursor: 'pointer', fontSize: '1rem', marginLeft: '4px',paddingTop: '10px' }} onClick={resetForm}>
                 Clear form
               </button>
+
+              <div style={{ marginLeft: 'auto', color: 'var(--gf-text-secondary)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {draftSaving ? (
+                  <><div className="gf-spinner" style={{ width: '12px', height: '12px', borderWidth: '2px' }} /> Saving...</>
+                ) : draftSavedAt ? (
+                  <><span className="material-symbols-outlined" style={{ fontSize: '16px', color: 'var(--gf-green)' }}>check_circle</span> Saved</>
+                ) : null}
+              </div>
             </div>
 
-            <div style={{ marginTop: '20px', fontSize: '0.8rem', color: 'var(--gf-text-secondary)', textAlign: 'center' }}>
-              Never submit passwords through this form. • <a href="/forms" style={{ color: 'var(--gf-purple)' }}>Build your own form</a>
-            </div>
           </>
         )}
-
       </form>
     </div>
   );

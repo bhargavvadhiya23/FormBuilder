@@ -124,4 +124,9 @@ public class FormField {
 	public UUID getVersionId() {
 		return version != null ? version.getId() : null;
 	}
+
+	public boolean hasDataSource() {
+		return dataSourceTable != null && !dataSourceTable.isBlank() &&
+			   dataSourceColumn != null && !dataSourceColumn.isBlank();
+	}
 }

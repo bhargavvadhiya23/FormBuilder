@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import org.springframework.security.core.Authentication;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -70,6 +71,16 @@ public class PublicFormController {
             response.put("alreadySubmitted", existingSubmissionId != null);
             response.put("submissionId", existingSubmissionId != null ? existingSubmissionId : "");
             
+            // Check for drafts
+            Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            System.out.println("DEBUG: getPublishedForm - Auth: " + (auth != null ? auth.getName() : "NULL") + ", Principal: " + (auth != null ? auth.getPrincipal() : "NULL"));
+            
+            Long draftId = submissionService.getUserSubmissionId(version.getId(), "DRAFT");
+            System.out.println("DEBUG: getPublishedForm - Draft ID found: " + draftId);
+            
+            response.put("hasDraft", draftId != null);
+            response.put("draftId", draftId != null ? draftId : "");
+
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             System.err.println("ERROR: Failed to fetch published form " + formId + ": " + e.getMessage());
@@ -156,6 +167,21 @@ public class PublicFormController {
                 .orElseThrow(() -> new RuntimeException("This form is not published"));
 
         return ResponseEntity.ok(submissionService.getSubmission(version.getId(), submissionId));
+    }
+
+    /**
+     * Get the current user's draft for a form.
+     */
+    @GetMapping("/{formId}/draft")
+    public ResponseEntity<Map<String, Object>> getDraft(@PathVariable UUID formId) {
+        FormVersion version = formService.getPublishedVersion(formId)
+                .orElseThrow(() -> new RuntimeException("This form is not published"));
+
+        Long draftId = submissionService.getUserSubmissionId(version.getId(), "DRAFT");
+        if (draftId == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(submissionService.getSubmission(version.getId(), draftId));
     }
 
     /**

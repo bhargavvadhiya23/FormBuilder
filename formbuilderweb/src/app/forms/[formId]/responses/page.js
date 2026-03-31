@@ -668,13 +668,44 @@ export default function ResponsesPage({ params }) {
   responses.forEach(resp => {
     Object.keys(resp).forEach(key => {
       // Exclude metadata, form info, and internal '_raw' columns (used for dynamic dropdown selection)
-      if (key !== 'id' && key !== 'submitted_at' && key !== 'name' && key !== 'description' && !key.endsWith('_raw') && !existingFieldKeys.has(key)) {
+      if (key !== 'id' && key !== 'submitted_at' && key !== 'name' && key !== 'description' && 
+          key !== 'status' && !key.endsWith('_raw') && !existingFieldKeys.has(key)) {
         extraColumnKeys.add(key);
       }
     });
   });
 
   const columns = [
+    {
+      name: 'Status',
+      selector: row => row.status,
+      sortable: true,
+      cell: row => {
+        const status = row.status || 'COMPLETED';
+        const isDraft = status === 'DRAFT';
+        return (
+          <span style={{
+            padding: '4px 8px',
+            borderRadius: '12px',
+            fontSize: '0.75rem',
+            fontWeight: '600',
+            backgroundColor: isDraft ? '#fff3cd' : '#d4edda',
+            color: isDraft ? '#856404' : '#155724',
+            border: `1px solid ${isDraft ? '#ffeeba' : '#c3e6cb'}`,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            whiteSpace: 'nowrap'
+          }}>
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>
+              {isDraft ? 'drafts' : 'check_circle'}
+            </span>
+            {status}
+          </span>
+        );
+      },
+      width: '120px',
+    },
     {
       name: 'Submitted At',
       selector: row => row.submitted_at,
@@ -683,7 +714,7 @@ export default function ResponsesPage({ params }) {
       width: '180px',
     },
     ...fields
-      .filter(f => f.fieldType !== 'HEADING')
+      .filter(f => !['HEADING', 'PAGE_BREAK'].includes(f.fieldType))
       .map(f => ({
         name: f.fieldLabel || f.fieldKey,
         selector: row => row[f.fieldKey],

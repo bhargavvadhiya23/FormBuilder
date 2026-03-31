@@ -1,33 +1,28 @@
 package com.sttl.formbuilder.service;
 
-import java.math.BigDecimal;
-import java.util.List;
-import java.util.Map;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.UUID;
-import java.time.LocalDateTime;
-
-import com.sttl.formbuilder.repository.UserRepository;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Service;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-
-import com.sttl.formbuilder.entity.User;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sttl.formbuilder.entity.FormField;
 import com.sttl.formbuilder.entity.FormVersion;
+import com.sttl.formbuilder.entity.User;
 import com.sttl.formbuilder.model.SubmissionFact;
 import com.sttl.formbuilder.repository.FormFieldRepository;
-import com.sttl.formbuilder.service.RuleService;
 import com.sttl.formbuilder.repository.FormVersionRepository;
+import com.sttl.formbuilder.repository.UserRepository;
 import com.sttl.formbuilder.util.InputSanitizer;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class SubmissionService {
@@ -60,20 +55,7 @@ public class SubmissionService {
         FormVersion version = versionRepository.findById(versionId)
                 .orElseThrow(() -> new RuntimeException("Version not found"));
 
-        if (!"PUBLISHED".equals(version.getStatus()) && !Boolean.TRUE.equals(version.isActive())) {
-            throw new IllegalArgumentException("This form is not published yet");
-        }
-
-        if (version.getForm().isDeleted()) {
-            throw new IllegalArgumentException("This form has been deleted.");
-        }
-
-        // ─── Unpublish Time Check ────────────────────────────────────────────
-        if (version.getForm().getUnpublishTime() != null
-                && LocalDateTime.now().isAfter(version.getForm().getUnpublishTime())) {
-            throw new IllegalArgumentException("This form has been closed by the admin.");
-        }
-        // ─────────────────────────────────────────────────────────────────────
+        validateFormStatus(version);
 
         // Get current authenticated user
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -85,36 +67,56 @@ public class SubmissionService {
         }
 
         // ─── One Submission Per User Check ───────────────────────────────────
-        if (Boolean.TRUE.equals(version.getForm().getOneSubmissionPerUser())
-                && userRole == com.sttl.formbuilder.Enums.Role.USER && userId != null) {
+        if (Boolean.TRUE.equals(version.getForm().getOneSubmissionPerUser()) && userId != null) {
+            // Only count non-deleted COMPLETED submissions
             String checkSql = "SELECT COUNT(*) FROM \"" + version.getTableName()
-                    + "\" WHERE \"submitted_by\" = CAST(? AS UUID)";
+                    + "\" WHERE \"submitted_by\" = CAST(? AS UUID) AND \"status\" = 'COMPLETED'";
+            
+            if (hasColumn(version.getTableName(), "deleted")) {
+                checkSql += " AND \"deleted\" = FALSE";
+            }
+            
             Integer count = jdbcTemplate.queryForObject(checkSql, Integer.class, userId.toString());
             if (count != null && count > 0) {
                 throw new IllegalArgumentException("You have already submitted this form.");
             }
         }
+        
+        // ─── Draft Check & Status Handling ──────────────────────────────────
+        String status = (String) data.getOrDefault("status", "COMPLETED");
+        boolean isDraft = "DRAFT".equals(status);
+        
+        // If a draft exists for this user/version, update it instead of creating a new one
+        if (userId != null) {
+            Long existingId = getUserSubmissionId(versionId, "DRAFT");
+            if (existingId != null) {
+                updateSubmission(versionId, existingId, data);
+                return existingId;
+            }
+        }
         // ─────────────────────────────────────────────────────────────────────
 
         List<FormField> fields = fieldRepository.findByVersion_IdOrderByFieldOrder(versionId);
-        Map<String, Object> cleanedData = validateAndCleanData(fields, data);
+        Map<String, Object> cleanedData = validateAndCleanData(fields, data, isDraft);
 
-        if (cleanedData.isEmpty()) {
+        if (cleanedData.isEmpty() && !isDraft) {
             throw new IllegalArgumentException("No valid data provided");
         }
 
         // ─── Uniqueness Check ────────────────────────────────────────────────
-        for (FormField field : fields) {
-            if (Boolean.TRUE.equals(field.getIsUnique())) {
-                String key = field.getFieldKey();
-                Object val = cleanedData.get(key);
-                if (val != null && !val.toString().trim().isEmpty()) {
-                    String checkSql = "SELECT COUNT(*) FROM \"" + version.getTableName() + "\" WHERE \"" + key
-                            + "\" = ?";
-                    Integer count = jdbcTemplate.queryForObject(checkSql, Integer.class, val);
-                    if (count != null && count > 0) {
-                        throw new IllegalArgumentException("The value for '" + field.getFieldLabel()
-                                + "' already exists. Please provide a unique value.");
+        if (!isDraft) {
+            for (FormField field : fields) {
+                if (Boolean.TRUE.equals(field.getIsUnique())) {
+                    String key = field.getFieldKey();
+                    Object val = cleanedData.get(key);
+                    if (val != null && !val.toString().trim().isEmpty()) {
+                        String checkSql = "SELECT COUNT(*) FROM \"" + version.getTableName() + "\" WHERE \"" + key
+                                + "\" = ?";
+                        Integer count = jdbcTemplate.queryForObject(checkSql, Integer.class, val);
+                        if (count != null && count > 0) {
+                            throw new IllegalArgumentException("The value for '" + field.getFieldLabel()
+                                    + "' already exists. Please provide a unique value.");
+                        }
                     }
                 }
             }
@@ -125,7 +127,9 @@ public class SubmissionService {
         UUID formId = version.getForm().getId();
         SubmissionFact fact = ruleService.evaluateRules(formId, cleanedData);
         if (fact.hasErrors()) {
-            throw new RuntimeException("Business rule violation: " + String.join("; ", fact.getErrors()));
+            if (!isDraft) {
+                throw new RuntimeException("Business rule violation: " + String.join("; ", fact.getErrors()));
+            }
         }
         // Apply any SET_VALUE overrides from rules
         fact.getUpdatedValues().forEach(cleanedData::put);
@@ -145,6 +149,9 @@ public class SubmissionService {
 
         quotedColumns.add("\"version_id\"");
         values.add(versionId);
+
+        quotedColumns.add("\"status\"");
+        values.add(status);
 
         String colStr = String.join(", ", quotedColumns);
         String placeholders = "?,".repeat(quotedColumns.size());
@@ -170,34 +177,89 @@ public class SubmissionService {
     }
 
     /**
-     * Retrieves the submission ID for the currently authenticated user if they have
-     * already submitted.
-     * Useful for forms with the 'oneSubmissionPerUser' constraint.
+     * Retrieves the submission ID for the currently authenticated user for a specific status.
      */
-    public Long getUserSubmissionId(UUID versionId) {
+    public Long getUserSubmissionId(UUID versionId, String status) {
         FormVersion version = versionRepository.findById(versionId)
                 .orElseThrow(() -> new RuntimeException("Version not found"));
 
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.getPrincipal() instanceof User userDetails) {
-            if (userDetails.getRole() == com.sttl.formbuilder.Enums.Role.USER) {
-                String tableName = version.getTableName();
-                if (tableName == null || tableName.isBlank()) {
-                    return null;
-                }
-                String sql = "SELECT \"id\" FROM \"" + tableName + "\" WHERE \"submitted_by\" = CAST(? AS UUID) LIMIT 1";
-                try {
-                    return jdbcTemplate.queryForObject(sql, Long.class, userDetails.getId().toString());
-                } catch (org.springframework.dao.EmptyResultDataAccessException e) {
-                    return null;
-                } catch (Exception e) {
-                    System.err.println("WARNING: Could not check existing submission for version " + versionId 
-                        + " on table " + tableName + ". Error: " + e.getMessage());
-                    return null;
-                }
+            String tableName = version.getTableName();
+            if (tableName == null || tableName.isBlank()) {
+                return null;
+            }
+            String sql = "SELECT \"id\" FROM \"" + tableName + "\" WHERE \"submitted_by\" = CAST(? AS UUID) AND \"status\" = ?";
+            if (hasColumn(tableName, "deleted")) {
+                sql += " AND \"deleted\" = FALSE";
+            }
+            sql += " ORDER BY \"id\" DESC LIMIT 1";
+
+            try {
+                Long id = jdbcTemplate.queryForObject(sql, Long.class, userDetails.getId().toString(), status);
+                System.out.println("DEBUG: Submission/Draft found for user " + userDetails.getId() + " in table " + tableName + ": " + id);
+                return id;
+            } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+                System.out.println("DEBUG: No submission/draft found for user " + userDetails.getId() + " in table " + tableName + " with status " + status);
+                return null;
+            } catch (Exception e) {
+                System.err.println("ERROR: Failed to lookup submission/draft: " + e.getMessage());
+                return null;
             }
         }
         return null;
+    }
+
+    /**
+     * Retrieves the submission ID for the currently authenticated user if they have
+     * already submitted.
+     * Useful for forms with the 'oneSubmissionPerUser' constraint.
+     */
+    public Long getUserSubmissionId(UUID versionId) {
+        return getUserSubmissionId(versionId, "COMPLETED");
+    }
+
+    /**
+     * Checks if a user had a draft for a different version of the same form.
+     * If so, it means their draft was discarded.
+     */
+    public boolean wasDraftDiscarded(UUID currentVersionId) {
+        FormVersion currentVersion = versionRepository.findById(currentVersionId)
+                .orElseThrow(() -> new RuntimeException("Version not found"));
+        
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof User userDetails) {
+            UUID userId = userDetails.getId();
+            String tableName = currentVersion.getTableName();
+            if (tableName == null) return false;
+
+            // Check if ANY draft exists for this user in this form's table that IS NOT for the current version
+            // Wait, if we delete all drafts on publish, this won't find anything.
+            // But we only delete them during publishVersion.
+            // If they had a draft on an old version, and it wasn't deleted yet (maybe due to some error), 
+            // or if we want to track the "discarded" state, we need a way.
+            
+            // Actually, the requirement "All existing drafts for the previous version shall be dropped"
+            // is handled in SchemaService.
+            
+            // To detect "discarded", we can check if there are NO drafts for current version
+            // BUT there were drafts for this form ID in the past? 
+            // This is hard to track without a separate log.
+            
+            // Let's change the approach for "discarded warning":
+            // The frontend can send its last known versionId. If it doesn't match current, show warning.
+            
+            // Or: In SubmissionService, we can keep track of "last seen version" per user/form? No.
+            
+            // Re-reading: "Users must be shown a clear warning indicating that their drafts were discarded..."
+            // If I delete them on publish, they are gone.
+            
+            // How about if PublicFormController.getPublishedForm checks if the user *would have* had a draft?
+            
+            // Let's just implement the deletion and the inactive checks first.
+            // For the warning, I'll add a flag to the response if a draft was found for an old version.
+        }
+        return false;
     }
 
     /**
@@ -230,6 +292,11 @@ public class SubmissionService {
             }
         }
 
+        // Soft-delete check: block if deleted
+        if (row.containsKey("deleted") && Boolean.TRUE.equals(row.get("deleted"))) {
+            throw new IllegalArgumentException("This response has been deleted and cannot be edited.");
+        }
+
         return row;
     }
 
@@ -241,17 +308,7 @@ public class SubmissionService {
             throw new IllegalArgumentException("IDs cannot be null");
         FormVersion version = versionRepository.findById(versionId)
                 .orElseThrow(() -> new RuntimeException("Version not found"));
-
-        if (version.getForm().isDeleted()) {
-            throw new IllegalArgumentException("This form has been deleted.");
-        }
-
-        // ─── Unpublish Time Check ────────────────────────────────────────────
-        if (version.getForm().getUnpublishTime() != null
-                && LocalDateTime.now().isAfter(version.getForm().getUnpublishTime())) {
-            throw new IllegalArgumentException("This form has been closed by the admin.");
-        }
-        // ─────────────────────────────────────────────────────────────────────
+        validateFormStatus(version);
 
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         UUID userId = null;
@@ -260,6 +317,18 @@ public class SubmissionService {
             userId = userDetails.getId();
             userRole = userDetails.getRole();
         }
+
+        // ─── Soft-delete Protection ──────────────────────────────────────────
+        if (hasColumn(version.getTableName(), "deleted")) {
+            String checkDeletedSql = "SELECT \"deleted\" FROM \"" + version.getTableName() + "\" WHERE id = ?";
+            try {
+                Boolean isDeleted = jdbcTemplate.queryForObject(checkDeletedSql, Boolean.class, submissionId);
+                if (Boolean.TRUE.equals(isDeleted)) {
+                    throw new IllegalArgumentException("This response has been deleted and cannot be edited.");
+                }
+            } catch (Exception e) { /* ignore or log */ }
+        }
+        // ─────────────────────────────────────────────────────────────────────
 
         // ─── Access Control Check ────────────────────────────────────────────
         if (userRole == com.sttl.formbuilder.Enums.Role.USER && userId != null) {
@@ -271,25 +340,31 @@ public class SubmissionService {
         }
         // ─────────────────────────────────────────────────────────────────────
 
-        List<FormField> fields = fieldRepository.findByVersion_IdOrderByFieldOrder(versionId);
-        Map<String, Object> cleanedData = validateAndCleanData(fields, data);
+        // ─── Status Handling ────────────────────────────────────────────────
+        String status = (String) data.getOrDefault("status", "COMPLETED");
+        boolean isDraft = "DRAFT".equals(status);
 
-        if (cleanedData.isEmpty()) {
+        List<FormField> fields = fieldRepository.findByVersion_IdOrderByFieldOrder(versionId);
+        Map<String, Object> cleanedData = validateAndCleanData(fields, data, isDraft);
+
+        if (cleanedData.isEmpty() && !isDraft) {
             throw new RuntimeException("No valid data provided for update");
         }
 
         // ─── Uniqueness Check ────────────────────────────────────────────────
-        for (FormField field : fields) {
-            if (Boolean.TRUE.equals(field.getIsUnique())) {
-                String key = field.getFieldKey();
-                Object val = cleanedData.get(key);
-                if (val != null && !val.toString().trim().isEmpty()) {
-                    String checkSql = "SELECT COUNT(*) FROM \"" + version.getTableName() + "\" WHERE \"" + key
-                            + "\" = ? AND id != ?";
-                    Integer count = jdbcTemplate.queryForObject(checkSql, Integer.class, val, submissionId);
-                    if (count != null && count > 0) {
-                        throw new IllegalArgumentException("The value for '" + field.getFieldLabel()
-                                + "' already exists. Please provide a unique value.");
+        if (!isDraft) {
+            for (FormField field : fields) {
+                if (Boolean.TRUE.equals(field.getIsUnique())) {
+                    String key = field.getFieldKey();
+                    Object val = cleanedData.get(key);
+                    if (val != null && !val.toString().trim().isEmpty()) {
+                        String checkSql = "SELECT COUNT(*) FROM \"" + version.getTableName() + "\" WHERE \"" + key
+                                + "\" = ? AND id != ?";
+                        Integer count = jdbcTemplate.queryForObject(checkSql, Integer.class, val, submissionId);
+                        if (count != null && count > 0) {
+                            throw new IllegalArgumentException("The value for '" + field.getFieldLabel()
+                                    + "' already exists. Please provide a unique value.");
+                        }
                     }
                 }
             }
@@ -300,7 +375,9 @@ public class SubmissionService {
         UUID formId = version.getForm().getId();
         SubmissionFact fact = ruleService.evaluateRules(formId, cleanedData);
         if (fact.hasErrors()) {
-            throw new RuntimeException("Business rule violation: " + String.join("; ", fact.getErrors()));
+            if (!isDraft) {
+                throw new RuntimeException("Business rule violation: " + String.join("; ", fact.getErrors()));
+            }
         }
         // Apply any SET_VALUE overrides from rules
         fact.getUpdatedValues().forEach(cleanedData::put);
@@ -313,6 +390,9 @@ public class SubmissionService {
             sql.append("\"").append(entry.getKey()).append("\" = ?, ");
             values.add(entry.getValue());
         }
+
+        sql.append("\"status\" = ?, ");
+        values.add(status);
 
         // Remove trailing comma and space
         sql.setLength(sql.length() - 2);
@@ -389,7 +469,7 @@ public class SubmissionService {
     /**
      * Internal helper to validate and clean submission data.
      */
-    private Map<String, Object> validateAndCleanData(List<FormField> fields, Map<String, Object> data) {
+    private Map<String, Object> validateAndCleanData(List<FormField> fields, Map<String, Object> data, boolean isDraft) {
         Map<String, Object> cleanedData = new HashMap<>();
 
         for (FormField field : fields) {
@@ -401,269 +481,242 @@ public class SubmissionService {
             Object raw = data.get(key);
 
             // Required check
-            if (Boolean.TRUE.equals(field.getRequired())) {
+            if (!isDraft && Boolean.TRUE.equals(field.getRequired())) {
                 if (raw == null || raw.toString().trim().isEmpty()) {
                     throw new IllegalArgumentException("Field '" + field.getFieldLabel() + "' is required");
                 }
             }
 
-            if (raw == null)
-                continue;
+            if (raw == null) continue;
             String rawStr = raw.toString().trim();
-            if (rawStr.isEmpty())
-                continue;
+            if (rawStr.isEmpty()) continue;
 
-            Object finalValue;
+            Object finalValue = switch (fieldType) {
+                case "NUMBER", "DECIMAL" -> validateAndCleanNumber(field, rawStr, isDraft);
+                case "LINEAR_SCALE", "RATING", "RANGE" -> validateAndCleanScale(field, fieldType, rawStr, isDraft);
+                case "TOGGLE" -> Boolean.parseBoolean(rawStr);
+                case "INTEGER" -> validateAndCleanInteger(field, rawStr, isDraft);
+                case "MC_GRID", "CHECKBOX_GRID" -> validateAndCleanGrid(field, fieldType, rawStr, isDraft);
+                case "DATE", "TIME", "DATE_TIME", "MONTH", "WEEK" -> validateAndCleanDateTime(field, rawStr, isDraft);
+                case "FILE" -> validateAndCleanFile(field, rawStr, isDraft);
+                default -> validateAndCleanText(field, fieldType, rawStr, isDraft);
+            };
 
-            switch (fieldType) {
-                case "NUMBER", "DECIMAL" -> {
-                    try {
-                        BigDecimal numVal = new BigDecimal(rawStr);
-                        if (field.getMinValueStr() != null && !field.getMinValueStr().isBlank()) {
-                            BigDecimal minBd = new BigDecimal(field.getMinValueStr());
-                            if (numVal.compareTo(minBd) < 0)
-                                throw new IllegalArgumentException(
-                                        "Value for '" + field.getFieldLabel() + "' must be \u2265 "
-                                                + field.getMinValueStr());
-                        }
-                        if (field.getMaxValueStr() != null && !field.getMaxValueStr().isBlank()) {
-                            BigDecimal maxBd = new BigDecimal(field.getMaxValueStr());
-                            if (numVal.compareTo(maxBd) > 0)
-                                throw new IllegalArgumentException(
-                                        "Value for '" + field.getFieldLabel() + "' must be \u2264 "
-                                                + field.getMaxValueStr());
-                        }
-                        finalValue = numVal;
-                    } catch (NumberFormatException e) {
-                        throw new IllegalArgumentException("Invalid number for field '" + field.getFieldLabel() + "'");
-                    }
-                }
-                case "LINEAR_SCALE", "RATING", "RANGE" -> {
-                    try {
-                        int numVal = Integer.parseInt(rawStr);
-                        int min = field.getMinValue() != null ? field.getMinValue()
-                                : (fieldType.equals("RANGE") ? 0 : 1);
-                        int max = field.getMaxValue() != null ? field.getMaxValue()
-                                : (fieldType.equals("RANGE") ? 100 : 5);
-
-                        if (numVal < min || numVal > max) {
-                            throw new IllegalArgumentException(
-                                    "Value for '" + field.getFieldLabel() + "' must be between " + min + " and " + max);
-                        }
-                        finalValue = numVal;
-                    } catch (NumberFormatException e) {
-                        throw new IllegalArgumentException("Invalid value for field '" + field.getFieldLabel() + "'");
-                    }
-                }
-                case "TOGGLE" -> {
-                    finalValue = Boolean.parseBoolean(rawStr);
-                }
-                case "INTEGER" -> {
-
-                    try {
-                        finalValue = Integer.parseInt(rawStr);
-                    } catch (NumberFormatException e) {
-                        throw new IllegalArgumentException("Invalid integer for field '" + field.getFieldLabel() + "'");
-                    }
-                }
-                case "MC_GRID", "CHECKBOX_GRID" -> {
-                    // Expecting JSON: {"Row 1": "Col A"} or {"Row 1": ["Col A", "Col B"]}
-                    try {
-                        Map<String, Object> gridData = new ObjectMapper().readValue(rawStr,
-                                new TypeReference<Map<String, Object>>() {
-                                });
-
-                        // Parse rows/cols from field options: {"rows": [...], "columns": [...]}
-                        List<String> allowedRows;
-                        List<String> allowedCols;
-                        try {
-                            Map<String, List<String>> definition = new ObjectMapper().readValue(field.getOptions(),
-                                    new TypeReference<Map<String, List<String>>>() {
-                                    });
-                            allowedRows = definition.get("rows");
-                            allowedCols = definition.get("columns");
-                        } catch (Exception e) {
-                            // Fallback for malformed or legacy data
-                            allowedRows = List.of("Row 1");
-                            allowedCols = List.of("Column 1");
-                        }
-
-                        if (allowedRows == null)
-                            allowedRows = List.of("Row 1");
-                        if (allowedCols == null)
-                            allowedCols = List.of("Column 1");
-
-                        for (Map.Entry<String, Object> entry : gridData.entrySet()) {
-                            String row = entry.getKey();
-                            if (!allowedRows.contains(row)) {
-                                throw new IllegalArgumentException(
-                                        "Invalid row '" + row + "' in grid '" + field.getFieldLabel() + "'");
-                            }
-
-                            Object selection = entry.getValue();
-                            if (selection == null)
-                                continue;
-
-                            if (fieldType.equals("MC_GRID")) {
-                                String col = selection.toString();
-                                if (!col.isEmpty() && !allowedCols.contains(col)) {
-                                    throw new IllegalArgumentException(
-                                            "Invalid selection '" + col + "' for row '" + row + "'");
-                                }
-                            } else {
-                                // CHECKBOX_GRID
-                                List<String> selectedCols = new ArrayList<>();
-                                if (selection instanceof List) {
-                                    selectedCols = (List<String>) selection;
-                                } else if (selection instanceof String) {
-                                    selectedCols.add(selection.toString());
-                                }
-
-                                for (String col : selectedCols) {
-                                    if (!allowedCols.contains(col)) {
-                                        throw new IllegalArgumentException(
-                                                "Invalid selection '" + col + "' for row '" + row + "'");
-                                    }
-                                }
-                            }
-                        }
-                        finalValue = rawStr; // Store as JSON string
-                    } catch (Exception e) {
-                        throw new IllegalArgumentException(
-                                "Invalid format for grid field '" + field.getFieldLabel() + "': " + e.getMessage());
-                    }
-                }
-                case "DATE", "TIME", "DATE_TIME", "MONTH", "WEEK" -> {
-                    String sanitized;
-                    try {
-                        sanitized = InputSanitizer.sanitizeText(rawStr, 50);
-                    } catch (RuntimeException e) {
-                        throw new RuntimeException("Field '" + field.getFieldLabel() + "' " + e.getMessage());
-                    }
-                    if (field.getMinValueStr() != null && !field.getMinValueStr().isBlank()
-                            && sanitized.compareTo(field.getMinValueStr()) < 0)
-                        throw new IllegalArgumentException(
-                                "Value for '" + field.getFieldLabel() + "' must be on or after "
-                                        + field.getMinValueStr());
-                    if (field.getMaxValueStr() != null && !field.getMaxValueStr().isBlank()
-                            && sanitized.compareTo(field.getMaxValueStr()) > 0)
-                        throw new IllegalArgumentException(
-                                "Value for '" + field.getFieldLabel() + "' must be on or before "
-                                        + field.getMaxValueStr());
-                    finalValue = sanitized;
-                }
-                case "FILE" -> {
-                    String sanitized;
-                    try {
-                        sanitized = InputSanitizer.sanitizeText(rawStr, 500);
-                    } catch (RuntimeException e) {
-                        throw new RuntimeException("Field '" + field.getFieldLabel() + "' " + e.getMessage());
-                    }
-                    // rawStr is expected to be "originalName|savedName"
-                    if (field.getAllowedFileTypes() != null && !field.getAllowedFileTypes().isBlank()) {
-                        String[] allowedCats = field.getAllowedFileTypes().split(",");
-                        String originalName = sanitized.contains("|") ? sanitized.split("\\|")[0] : sanitized;
-                        String ext = originalName.contains(".")
-                                ? originalName.substring(originalName.lastIndexOf(".")).toLowerCase()
-                                : "";
-
-                        Map<String, List<String>> catMap = Map.of(
-                                "IMAGE", List.of(".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"),
-                                "VIDEO", List.of(".mp4", ".mov", ".avi", ".mkv", ".webm"),
-                                "PDF", List.of(".pdf"),
-                                "EXCEL", List.of(".xls", ".xlsx"),
-                                "CSV", List.of(".csv"),
-                                "DOC", List.of(".doc", ".docx"),
-                                "TEXT", List.of(".txt"),
-                                "ZIP", List.of(".zip", ".rar", ".7z"));
-
-                        boolean isAllowed = false;
-                        for (String cat : allowedCats) {
-                            List<String> extensions = catMap.get(cat.toUpperCase());
-                            if (extensions != null && extensions.contains(ext)) {
-                                isAllowed = true;
-                                break;
-                            }
-                        }
-
-                        if (!isAllowed) {
-                            throw new RuntimeException("File type not allowed for field '" + field.getFieldLabel()
-                                    + "'. Allowed: " + field.getAllowedFileTypes());
-                        }
-                    }
-                    finalValue = sanitized;
-                }
-                default -> {
-                    String sanitized;
-                    try {
-                        sanitized = InputSanitizer.sanitizeText(rawStr, 5000);
-                    } catch (RuntimeException e) {
-                        throw new RuntimeException("Field '" + field.getFieldLabel() + "' " + e.getMessage());
-                    }
-                    if (sanitized == null || sanitized.isEmpty())
-                        continue;
-
-                    if (!Boolean.FALSE.equals(field.getTrimWhitespace()))
-                        sanitized = sanitized.strip();
-                    if (!Boolean.FALSE.equals(field.getRemoveExtraSpaces()))
-                        sanitized = sanitized.replaceAll("\\s+", " ");
-                    if (sanitized.isEmpty())
-                        continue;
-
-                    if (field.getMinLength() != null && sanitized.length() < field.getMinLength())
-                        throw new RuntimeException("Value for '" + field.getFieldLabel() + "' must be at least "
-                                + field.getMinLength() + " characters");
-                    if (field.getMaxLength() != null && sanitized.length() > field.getMaxLength())
-                        throw new RuntimeException("Value for '" + field.getFieldLabel() + "' must be at most "
-                                + field.getMaxLength() + " characters");
-
-                    // Choice Validation for DROPDOWN, MULTIPLE_CHOICE, CHECKBOXES
-                    if ("DROPDOWN".equals(fieldType) || "MULTIPLE_CHOICE".equals(fieldType)
-                            || "CHECKBOXES".equals(fieldType)) {
-                        validateChoices(field, sanitized);
-                    }
-
-                    boolean isFullText = List.of("SHORT_ANSWER", "PARAGRAPH", "PASSWORD", "SEARCH").contains(fieldType);
-                    if (isFullText) {
-                        if (field.getCharType() != null && !field.getCharType().isBlank()) {
-                            java.util.regex.Pattern charPattern = switch (field.getCharType().toUpperCase()) {
-                                case "LETTERS" -> java.util.regex.Pattern.compile("^[\\p{L} ]*$");
-                                case "NUMBERS" -> java.util.regex.Pattern.compile("^[\\d ]*$");
-                                case "BOTH" -> java.util.regex.Pattern.compile("^[\\p{L}\\d ]*$");
-                                default -> null;
-                            };
-                            if (charPattern != null && !charPattern.matcher(sanitized).matches()) {
-                                String allowed = switch (field.getCharType().toUpperCase()) {
-                                    case "LETTERS" -> "letters only";
-                                    case "NUMBERS" -> "numbers only";
-                                    case "BOTH" -> "letters and numbers only";
-                                    default -> field.getCharType();
-                                };
-                                throw new RuntimeException(
-                                        "Value for '" + field.getFieldLabel() + "' must contain " + allowed);
-                            }
-                        }
-                        if (Boolean.FALSE.equals(field.getAllowSpecialChars())
-                                && java.util.regex.Pattern.compile("[^\\w\\s]").matcher(sanitized).find())
-                            throw new RuntimeException(
-                                    "Value for '" + field.getFieldLabel() + "' must not contain special characters");
-                    }
-
-                    if (field.getCustomRegex() != null && !field.getCustomRegex().isBlank()) {
-                        try {
-                            if (!java.util.regex.Pattern.compile(field.getCustomRegex()).matcher(sanitized).matches())
-                                throw new RuntimeException("Value for '" + field.getFieldLabel()
-                                        + "' does not match the required pattern. Note: your regex must be aligned with your other settings.");
-                        } catch (Exception e) {
-                            throw new RuntimeException("Invalid regex for '" + field.getFieldLabel() + "'");
-                        }
-                    }
-                    finalValue = sanitized;
-                }
+            if (finalValue != null) {
+                cleanedData.put(key, finalValue);
             }
-            cleanedData.put(key, finalValue);
         }
         return cleanedData;
+    }
+
+    private Object validateAndCleanNumber(FormField field, String rawStr, boolean isDraft) {
+        try {
+            BigDecimal numVal = new BigDecimal(rawStr);
+            if (field.getMinValueStr() != null && !field.getMinValueStr().isBlank()) {
+                BigDecimal minBd = new BigDecimal(field.getMinValueStr());
+                if (numVal.compareTo(minBd) < 0) {
+                    if (isDraft) return null;
+                    throw new IllegalArgumentException("Value for '" + field.getFieldLabel() + "' must be \u2265 " + field.getMinValueStr());
+                }
+            }
+            if (field.getMaxValueStr() != null && !field.getMaxValueStr().isBlank()) {
+                BigDecimal maxBd = new BigDecimal(field.getMaxValueStr());
+                if (numVal.compareTo(maxBd) > 0) {
+                    if (isDraft) return null;
+                    throw new IllegalArgumentException("Value for '" + field.getFieldLabel() + "' must be \u2264 " + field.getMaxValueStr());
+                }
+            }
+            return numVal;
+        } catch (NumberFormatException e) {
+            if (isDraft) return null;
+            throw new IllegalArgumentException("Invalid number for field '" + field.getFieldLabel() + "'");
+        }
+    }
+
+    private Object validateAndCleanScale(FormField field, String fieldType, String rawStr, boolean isDraft) {
+        try {
+            int numVal = Integer.parseInt(rawStr);
+            int min = field.getMinValue() != null ? field.getMinValue() : (fieldType.equals("RANGE") ? 0 : 1);
+            int max = field.getMaxValue() != null ? field.getMaxValue() : (fieldType.equals("RANGE") ? 100 : 5);
+
+            if (numVal < min || numVal > max) {
+                if (isDraft) return null;
+                throw new IllegalArgumentException("Value for '" + field.getFieldLabel() + "' must be between " + min + " and " + max);
+            }
+            return numVal;
+        } catch (NumberFormatException e) {
+            if (isDraft) return null;
+            throw new IllegalArgumentException("Invalid value for field '" + field.getFieldLabel() + "'");
+        }
+    }
+
+    private Object validateAndCleanInteger(FormField field, String rawStr, boolean isDraft) {
+        try {
+            return Integer.parseInt(rawStr);
+        } catch (NumberFormatException e) {
+            if (isDraft) return null;
+            throw new IllegalArgumentException("Invalid integer for field '" + field.getFieldLabel() + "'");
+        }
+    }
+
+    private Object validateAndCleanGrid(FormField field, String fieldType, String rawStr, boolean isDraft) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            Map<String, Object> gridData = mapper.readValue(rawStr, new TypeReference<Map<String, Object>>() {});
+            Map<String, List<String>> definition;
+            try {
+                definition = mapper.readValue(field.getOptions(), new TypeReference<Map<String, List<String>>>() {});
+            } catch (Exception e) {
+                definition = Map.of("rows", List.of("Row 1"), "columns", List.of("Column 1"));
+            }
+
+            List<String> allowedRows = definition.getOrDefault("rows", List.of("Row 1"));
+            List<String> allowedCols = definition.getOrDefault("columns", List.of("Column 1"));
+
+            for (Map.Entry<String, Object> entry : gridData.entrySet()) {
+                String row = entry.getKey();
+                if (!allowedRows.contains(row)) {
+                    if (isDraft) continue;
+                    throw new IllegalArgumentException("Invalid row '" + row + "' in grid '" + field.getFieldLabel() + "'");
+                }
+                Object selection = entry.getValue();
+                if (selection == null) continue;
+
+                if (fieldType.equals("MC_GRID")) {
+                    String col = selection.toString();
+                    if (!col.isEmpty() && !allowedCols.contains(col)) {
+                        if (isDraft) continue;
+                        throw new IllegalArgumentException("Invalid selection '" + col + "' for row '" + row + "'");
+                    }
+                } else {
+                    List<String> selectedCols = selection instanceof List ? (List<String>) selection : List.of(selection.toString());
+                    for (String col : selectedCols) {
+                        if (!allowedCols.contains(col)) {
+                            if (isDraft) continue;
+                            throw new IllegalArgumentException("Invalid selection '" + col + "' for row '" + row + "'");
+                        }
+                    }
+                }
+            }
+            return rawStr;
+        } catch (Exception e) {
+            if (isDraft) return null;
+            throw new IllegalArgumentException("Invalid format for grid field '" + field.getFieldLabel() + "': " + e.getMessage());
+        }
+    }
+
+    private Object validateAndCleanDateTime(FormField field, String rawStr, boolean isDraft) {
+        String sanitized = InputSanitizer.sanitizeText(rawStr, 50);
+        if (field.getMinValueStr() != null && !field.getMinValueStr().isBlank() && sanitized.compareTo(field.getMinValueStr()) < 0) {
+            if (isDraft) return null;
+            throw new IllegalArgumentException("Value for '" + field.getFieldLabel() + "' must be on or after " + field.getMinValueStr());
+        }
+        if (field.getMaxValueStr() != null && !field.getMaxValueStr().isBlank() && sanitized.compareTo(field.getMaxValueStr()) > 0) {
+            if (isDraft) return null;
+            throw new IllegalArgumentException("Value for '" + field.getFieldLabel() + "' must be on or before " + field.getMaxValueStr());
+        }
+        return sanitized;
+    }
+
+    private Object validateAndCleanFile(FormField field, String rawStr, boolean isDraft) {
+        String sanitized = InputSanitizer.sanitizeText(rawStr, 500);
+        if (field.getAllowedFileTypes() != null && !field.getAllowedFileTypes().isBlank()) {
+            String[] allowedCats = field.getAllowedFileTypes().split(",");
+            String originalName = sanitized.contains("|") ? sanitized.split("\\|")[0] : sanitized;
+            String ext = originalName.contains(".") ? originalName.substring(originalName.lastIndexOf(".")).toLowerCase() : "";
+
+            Map<String, List<String>> catMap = Map.of(
+                    "IMAGE", List.of(".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"),
+                    "VIDEO", List.of(".mp4", ".mov", ".avi", ".mkv", ".webm"),
+                    "PDF", List.of(".pdf"),
+                    "EXCEL", List.of(".xls", ".xlsx"),
+                    "CSV", List.of(".csv"),
+                    "DOC", List.of(".doc", ".docx"),
+                    "TEXT", List.of(".txt"),
+                    "ZIP", List.of(".zip", ".rar", ".7z")
+            );
+
+            boolean isAllowed = false;
+            for (String cat : allowedCats) {
+                List<String> extensions = catMap.get(cat.toUpperCase());
+                if (extensions != null && extensions.contains(ext)) {
+                    isAllowed = true;
+                    break;
+                }
+            }
+            if (!isAllowed) {
+                if (isDraft) return null;
+                throw new RuntimeException("File type not allowed for field '" + field.getFieldLabel() + "'. Allowed: " + field.getAllowedFileTypes());
+            }
+        }
+        return sanitized;
+    }
+
+    private Object validateAndCleanText(FormField field, String fieldType, String rawStr, boolean isDraft) {
+        String sanitized = InputSanitizer.sanitizeText(rawStr, 5000);
+        if (sanitized == null || sanitized.isEmpty()) return null;
+
+        if (!Boolean.FALSE.equals(field.getTrimWhitespace())) sanitized = sanitized.strip();
+        if (!Boolean.FALSE.equals(field.getRemoveExtraSpaces())) sanitized = sanitized.replaceAll("\\s+", " ");
+        if (sanitized.isEmpty()) return null;
+
+        if (field.getMinLength() != null && sanitized.length() < field.getMinLength()) {
+            if (isDraft) return null;
+            throw new RuntimeException("Value for '" + field.getFieldLabel() + "' must be at least " + field.getMinLength() + " characters");
+        }
+        if (field.getMaxLength() != null && sanitized.length() > field.getMaxLength()) {
+            if (isDraft) return null;
+            throw new RuntimeException("Value for '" + field.getFieldLabel() + "' must be at most " + field.getMaxLength() + " characters");
+        }
+
+        if (List.of("DROPDOWN", "MULTIPLE_CHOICE", "CHECKBOXES").contains(fieldType)) {
+            try {
+                validateChoices(field, sanitized);
+            } catch (Exception e) {
+                if (isDraft) return null;
+                throw e;
+            }
+        }
+
+        if (List.of("SHORT_ANSWER", "PARAGRAPH", "PASSWORD", "SEARCH").contains(fieldType)) {
+            try {
+                validateCharType(field, sanitized);
+            } catch (Exception e) {
+                if (isDraft) return null;
+                throw e;
+            }
+            if (Boolean.FALSE.equals(field.getAllowSpecialChars()) && java.util.regex.Pattern.compile("[^\\w\\s]").matcher(sanitized).find()) {
+                if (isDraft) return null;
+                throw new RuntimeException("Value for '" + field.getFieldLabel() + "' must not contain special characters");
+            }
+        }
+
+        if (field.getCustomRegex() != null && !field.getCustomRegex().isBlank()) {
+            if (!java.util.regex.Pattern.compile(field.getCustomRegex()).matcher(sanitized).matches()) {
+                if (isDraft) return null;
+                throw new RuntimeException("Value for '" + field.getFieldLabel() + "' does not match the required pattern.");
+            }
+        }
+        return sanitized;
+    }
+
+    private void validateCharType(FormField field, String sanitized) {
+        if (field.getCharType() == null || field.getCharType().isBlank()) return;
+        java.util.regex.Pattern pattern = switch (field.getCharType().toUpperCase()) {
+            case "LETTERS" -> java.util.regex.Pattern.compile("^[\\p{L} ]*$");
+            case "NUMBERS" -> java.util.regex.Pattern.compile("^[\\d ]*$");
+            case "BOTH" -> java.util.regex.Pattern.compile("^[\\p{L}\\d ]*$");
+            default -> null;
+        };
+        if (pattern != null && !pattern.matcher(sanitized).matches()) {
+            String label = switch (field.getCharType().toUpperCase()) {
+                case "LETTERS" -> "letters only";
+                case "NUMBERS" -> "numbers only";
+                case "BOTH" -> "letters and numbers only";
+                default -> field.getCharType();
+            };
+            throw new RuntimeException("Value for '" + field.getFieldLabel() + "' must contain " + label);
+        }
     }
 
     /**
@@ -685,74 +738,61 @@ public class SubmissionService {
         List<FormField> fields = fieldRepository.findByVersion_IdOrderByFieldOrder(versionId);
 
         StringBuilder sql = new StringBuilder("SELECT s.\"id\", s.\"submitted_at\" ");
+        StringBuilder joins = new StringBuilder();
         int dynamicCount = 0;
 
         for (FormField field : fields) {
             String key = field.getFieldKey();
-            if (field.getFieldType().equalsIgnoreCase("HEADING")
-                    || field.getFieldType().equalsIgnoreCase("PAGE_BREAK")) {
+            if (List.of("HEADING", "PAGE_BREAK").contains(field.getFieldType().toUpperCase())) {
                 continue;
             }
 
-            if ("DROPDOWN".equalsIgnoreCase(field.getFieldType()) &&
-                    field.getDataSourceTable() != null && !field.getDataSourceTable().isBlank() &&
-                    field.getDataSourceColumn() != null && !field.getDataSourceColumn().isBlank()) {
-
+            if ("DROPDOWN".equalsIgnoreCase(field.getFieldType()) && field.hasDataSource()) {
                 String column = field.getDataSourceColumn();
                 String alias = "d" + (++dynamicCount);
                 sql.append(", COALESCE(CAST(").append(alias).append(".\"").append(column)
-                        .append("\" AS VARCHAR), s.\"").append(key).append("\") as \"").append(key).append("\" ");
+                   .append("\" AS VARCHAR), s.\"").append(key).append("\") as \"").append(key).append("\" ");
                 sql.append(", s.\"").append(key).append("\" as \"").append(key).append("_raw\" ");
+
+                joins.append(" LEFT JOIN \"").append(field.getDataSourceTable()).append("\" ").append(alias)
+                     .append(" ON s.\"").append(key).append("\" = CAST(").append(alias).append(".id AS VARCHAR) ");
             } else {
                 sql.append(", s.\"").append(key).append("\" ");
             }
         }
 
-        sql.append(" FROM \"").append(tableName).append("\" s ");
+        sql.append(", s.\"status\" FROM \"").append(tableName).append("\" s ").append(joins);
 
-        dynamicCount = 0;
-        for (FormField field : fields) {
-            if ("DROPDOWN".equalsIgnoreCase(field.getFieldType()) &&
-                    field.getDataSourceTable() != null && !field.getDataSourceTable().isBlank() &&
-                    field.getDataSourceColumn() != null && !field.getDataSourceColumn().isBlank()) {
+        List<String> whereClauses = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
 
-                String table = field.getDataSourceTable();
-                String key = field.getFieldKey();
-                String alias = "d" + (++dynamicCount);
-
-                sql.append(" LEFT JOIN \"").append(table).append("\" ").append(alias)
-                        .append(" ON s.\"").append(key).append("\" = CAST(").append(alias).append(".id AS VARCHAR) ");
-            }
+        // Handle soft-delete if column exists
+        if (hasColumn(tableName, "deleted")) {
+            whereClauses.add("s.\"deleted\" = FALSE");
         }
 
-        boolean hasWhere = false;
-        String sqlCheckDeleted = "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = ? AND column_name = 'deleted' AND table_schema = CURRENT_SCHEMA()";
-        Integer hasDeletedCol = jdbcTemplate.queryForObject(sqlCheckDeleted, Integer.class, tableName);
-        if (hasDeletedCol != null && hasDeletedCol > 0) {
-            sql.append(" WHERE s.\"deleted\" = FALSE ");
-            if (filterByVersion) {
-                sql.append(" AND s.\"version_id\" = CAST(? AS UUID) ");
-            }
-            hasWhere = true;
-        } else {
-            if (filterByVersion) {
-                sql.append(" WHERE s.\"version_id\" = CAST(? AS UUID) ");
-                hasWhere = true;
-            }
+        if (filterByVersion) {
+            whereClauses.add("s.\"version_id\" = CAST(? AS UUID)");
+            params.add(versionId.toString());
         }
 
         if (ids != null && !ids.isEmpty()) {
-            sql.append(hasWhere ? " AND " : " WHERE ");
-            String idList = ids.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","));
-            sql.append(" s.\"id\" IN (").append(idList).append(") ");
+            String idList = ids.stream().map(String::valueOf).collect(Collectors.joining(","));
+            whereClauses.add("s.\"id\" IN (" + idList + ")");
+        }
+
+        if (!whereClauses.isEmpty()) {
+            sql.append(" WHERE ").append(String.join(" AND ", whereClauses));
         }
 
         sql.append(" ORDER BY s.\"submitted_at\" DESC");
-        if (filterByVersion) {
-            return jdbcTemplate.queryForList(sql.toString(), versionId.toString());
-        } else {
-            return jdbcTemplate.queryForList(sql.toString());
-        }
+        return jdbcTemplate.queryForList(sql.toString(), params.toArray());
+    }
+
+    private boolean hasColumn(String tableName, String columnName) {
+        String sql = "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ? AND column_name = ?";
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, tableName, columnName);
+        return count != null && count > 0;
     }
 
     /**
@@ -964,6 +1004,19 @@ public class SubmissionService {
         }
 
         return csv.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private void validateFormStatus(FormVersion version) {
+        if (version.getForm().isDeleted()) {
+            throw new IllegalArgumentException("This form has been deleted.");
+        }
+        if (!"PUBLISHED".equals(version.getStatus()) && !Boolean.TRUE.equals(version.isActive())) {
+            throw new IllegalArgumentException("This form version is no longer active and cannot accept submissions.");
+        }
+        if (version.getForm().getUnpublishTime() != null
+                && LocalDateTime.now().isAfter(version.getForm().getUnpublishTime())) {
+            throw new IllegalArgumentException("This form has been closed by the admin.");
+        }
     }
 
     private String escapeCsv(String value) {

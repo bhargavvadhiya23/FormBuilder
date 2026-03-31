@@ -121,7 +121,7 @@ export default function VersionsPage({ params }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '4px' }}>
                        <h3 style={{ margin: '0', fontSize: '1.1rem', fontWeight: '700' }}>Version {v.versionNumber}</h3>
                        {v.active ? (
-                         <span className="gf-badge" style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #d1fae5', padding: '2px 10px', fontSize: '0.7rem' }}>CURRENTLY ACTIVE</span>
+                         <span className="gf-badge" style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #d1fae5', padding: '2px 10px', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>CURRENTLY ACTIVE</span>
                        ) : (
                          <span className={`gf-badge ${v.status === 'PUBLISHED' ? 'gf-badge-primary' : 'gf-badge-secondary'}`} style={{ padding: '2px 10px', fontSize: '0.7rem' }}>
                            {v.status}

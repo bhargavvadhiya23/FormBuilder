@@ -447,6 +447,7 @@ export default function ApprovalsPage() {
                     font-size: 12px;
                     font-weight: 600;
                     border: 1px solid transparent;
+                    white-space: nowrap;
                 }
                 .note-cell {
                     font-size: 13px;

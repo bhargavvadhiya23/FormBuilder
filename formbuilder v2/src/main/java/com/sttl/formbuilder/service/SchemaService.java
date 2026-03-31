@@ -60,6 +60,7 @@ public class SchemaService {
                     .append("\"submitted_at\" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,")
                     .append("\"submitted_by\" UUID REFERENCES users(id),")
                     .append("\"version_id\" UUID REFERENCES form_versions(id),") // Added version_id
+                    .append("\"status\" VARCHAR(20) DEFAULT 'COMPLETED',")
                     .append("\"deleted\" BOOLEAN DEFAULT FALSE,");
 
             for (FormField field : fields) {
@@ -78,6 +79,11 @@ public class SchemaService {
             sql.deleteCharAt(sql.length() - 1);
             sql.append(")");
             jdbcTemplate.execute(sql.toString());
+        } else {
+            // Requirement: "All existing drafts for the previous version shall be dropped."
+            // Since all versions share the same table, we delete DRAFT records from this table.
+            String cleanupDraftsSql = "DELETE FROM \"" + tableName + "\" WHERE \"status\" = 'DRAFT'";
+            jdbcTemplate.execute(cleanupDraftsSql);
         }
         // Update table schema (handles both new and existing tables)
         syncSchema(tableName, fields);
