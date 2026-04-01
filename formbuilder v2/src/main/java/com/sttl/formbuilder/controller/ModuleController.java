@@ -17,7 +17,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/api/modules")
+@RequestMapping("${api.base-path}/modules")
 @RequiredArgsConstructor
 public class ModuleController {
 

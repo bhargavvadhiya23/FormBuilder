@@ -13,10 +13,10 @@ import java.util.*;
 
 /**
  * Admin inbox for approval requests.
- * All endpoints are under /admin/api and require ROLE_ADMIN.
+ * All endpoints are under /admin path and require ROLE_ADMIN.
  */
 @RestController
-@RequestMapping("/admin/api/approvals")
+@RequestMapping("${api.base-path}/admin/approvals")
 @org.springframework.transaction.annotation.Transactional
 public class ApprovalController {
 

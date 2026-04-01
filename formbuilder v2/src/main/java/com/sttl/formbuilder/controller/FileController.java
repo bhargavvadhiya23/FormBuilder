@@ -15,7 +15,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/files")
+@RequestMapping("${api.base-path}/files")
 public class FileController {
 
     private final FileService fileService;

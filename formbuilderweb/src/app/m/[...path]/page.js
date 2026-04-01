@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import api from '@/lib/api';
+import api, { API_BASE } from '@/lib/api';
 
 export default function DynamicModulePage() {
     const params = useParams();
@@ -18,7 +18,7 @@ export default function DynamicModulePage() {
                 // Fetch module details to get the link
                 // For simplicity, we assume the first segment is the ID if we use /m/[id]
                 // But the implementation plan said /m/[...path]
-                const res = await api.get('/api/modules/my');
+                const res = await api.get(`${API_BASE}/modules/my`);
                 const mods = res.data;
                 const match = mods.find(m => m.id === params.path[0] || m.routePrefix.includes(params.path[0]));
                 

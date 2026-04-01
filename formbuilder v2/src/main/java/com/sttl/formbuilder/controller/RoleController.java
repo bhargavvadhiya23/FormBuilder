@@ -17,7 +17,7 @@ import java.util.*;
  * Only accessible to ADMIN users (enforced in SecurityConfig).
  */
 @RestController
-@RequestMapping("/admin/api/roles")
+@RequestMapping("${api.base-path}/admin/roles")
 public class RoleController {
 
     private final RoleManagementService roleManagementService;

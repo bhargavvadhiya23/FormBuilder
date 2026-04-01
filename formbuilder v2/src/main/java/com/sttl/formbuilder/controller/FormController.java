@@ -35,7 +35,7 @@ import com.sttl.formbuilder.service.ApprovalService;
 import com.sttl.formbuilder.entity.ApprovalRequest;
 
 @RestController
-@RequestMapping({"/admin/api/forms", "/api/forms"})
+@RequestMapping({"${api.base-path}/admin/forms", "${api.base-path}/forms"})
 @org.springframework.transaction.annotation.Transactional
 public class FormController {
 
@@ -91,7 +91,7 @@ public class FormController {
                         boolean hasDraft = formService.getDraftVersion(f.getId()).isPresent();
                         map.put("published", pub);
                         map.put("hasDraft", hasDraft);
-                        map.put("shareLink", pub ? "/publish/" + f.getId() : null);
+                        map.put("shareLink", pub ? "/api/v1/publish/" + f.getId() : null);
                         
                         if (f.getCreatedBy() != null) {
                             Map<String, String> creator = new java.util.HashMap<>();

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import api from '@/lib/api';
+import api, { API_BASE } from '@/lib/api';
 
 export default function UserManagerPage() {
     const [users, setUsers] = useState([]);
@@ -25,8 +25,8 @@ export default function UserManagerPage() {
         try {
             setLoading(true);
             const [usersRes, rolesRes] = await Promise.all([
-                api.get('/admin/api/users'),
-                api.get('/admin/api/roles')
+                api.get(`${API_BASE}/admin/users`),
+                api.get(`${API_BASE}/admin/roles`)
             ]);
             
             setUsers(usersRes.data);
@@ -59,7 +59,7 @@ export default function UserManagerPage() {
         e.preventDefault();
         
         try {
-            const url = editingUser ? `/admin/api/users/${editingUser.id}` : '/admin/api/users';
+            const url = editingUser ? `${API_BASE}/admin/users/${editingUser.id}` : `${API_BASE}/admin/users`;
             const method = editingUser ? 'PUT' : 'POST';
             
             // Only send password if provided (for both create and edit)
@@ -116,7 +116,7 @@ export default function UserManagerPage() {
 
         if (result.isConfirmed) {
             try {
-                await api.delete(`/admin/api/users/${id}`);
+                await api.delete(`${API_BASE}/admin/users/${id}`);
                 Swal.fire({
                     title: 'Deleted!',
                     text: 'User has been deleted.',

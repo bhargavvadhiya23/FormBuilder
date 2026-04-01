@@ -331,6 +331,7 @@ export default function ResponsesPage({ params }) {
   const [saving, setSaving] = useState(false);
   const [selectedRows, setSelectedRows] = useState([]);
   const [toggleCleared, setToggleCleared] = useState(false);
+  const [filterStatus, setFilterStatus] = useState('COMPLETED');
 
 
   const fetchData = (vId) => {
@@ -765,6 +766,10 @@ export default function ResponsesPage({ params }) {
   ];
 
   const filteredResponses = responses.filter(item => {
+    // Submission Status Filter
+    const itemStatus = item.status || 'COMPLETED';
+    if (itemStatus !== filterStatus) return false;
+
     if (!filterText) return true;
     const lowerFilter = filterText.toLowerCase();
     // Search in submitted date
@@ -888,7 +893,6 @@ export default function ResponsesPage({ params }) {
               value={selectedVersionId}
               onChange={(e) => setSelectedVersionId(e.target.value)}
             >
-              <option value="">Latest Published (All Versions)</option>
               {versions.map(v => (
                 <option key={v.id} value={v.id}>
                   Version {v.versionNumber} {v.active ? '• Active' : ''} ({v.status})
@@ -896,10 +900,15 @@ export default function ResponsesPage({ params }) {
               ))}
             </select>
             {selectedVersionId && (
-              <div className="gf-version-badge-info">
-                <span className="gf-dot"></span>
-                Showing Version {versions.find(v => v.id === selectedVersionId)?.versionNumber}
-              </div>
+              <select 
+                className="gf-select-premium gf-status-select" 
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                disabled={!versions.find(v => v.id === selectedVersionId)?.active}
+              >
+                <option value="COMPLETED">Completed</option>
+                <option value="DRAFT">Draft</option>
+              </select>
             )}
           </div>
         </div>
@@ -977,6 +986,19 @@ export default function ResponsesPage({ params }) {
           height: 6px;
           background: #22c55e;
           border-radius: 50%;
+        }
+        .gf-status-select {
+          min-width: 140px !important;
+          border-color: #bbf7d0;
+          background: #f0fdf4;
+          color: #166534;
+          font-weight: 600;
+        }
+        .gf-status-select:disabled {
+          background: var(--gf-bg-disabled, #f3f4f6);
+          color: var(--gf-text-disabled, #9ca3af);
+          border-color: var(--gf-border-light);
+          cursor: not-allowed;
         }
         .gf-version-filter-desc {
           margin-top: 12px;

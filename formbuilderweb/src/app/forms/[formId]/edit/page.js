@@ -486,6 +486,23 @@ export default function FormEditPage({ params }) {
       }
     }
 
+    if (status.published && !status.hasDraft) {
+      const result = await Swal.fire({
+        title: 'Form Update',
+        text: 'Draft submission of this version was discarded due to a form update.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Proceed',
+        confirmButtonColor: 'var(--gf-purple)',
+        background: 'var(--bg-secondary)',
+        color: 'var(--text-primary)'
+      });
+
+      if (!result.isConfirmed) {
+        return false;
+      }
+    }
+
     setSaving(true);
     try {
       // Save form title/description/settings

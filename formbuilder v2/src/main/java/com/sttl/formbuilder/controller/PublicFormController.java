@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/publish")
+@RequestMapping("${api.base-path}/publish")
 @RequiredArgsConstructor
 @org.springframework.transaction.annotation.Transactional
 public class PublicFormController {
@@ -233,7 +233,7 @@ public class PublicFormController {
 
         status.put("published", published);
         status.put("hasDraft", formService.getDraftVersion(formId).isPresent());
-        status.put("shareLink", published ? "/publish/" + formId : null);
+        status.put("shareLink", published ? "/api/v1/publish/" + formId : null);
         return ResponseEntity.ok(status);
     }
 }

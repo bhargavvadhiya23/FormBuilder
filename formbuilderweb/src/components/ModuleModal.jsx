@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import api from '@/lib/api';
+import api, { API_BASE } from '@/lib/api';
 
 export default function ModuleModal({ isOpen, onClose, module = null, onSuccess }) {
     const [formData, setFormData] = useState({
@@ -47,7 +47,7 @@ export default function ModuleModal({ isOpen, onClose, module = null, onSuccess 
 
     const fetchParents = async () => {
         try {
-            const res = await api.get('/api/modules/admin/all');
+            const res = await api.get(`${API_BASE}/modules/admin/all`);
             setParents(res.data.filter(m => m.isParent && (!module || m.id !== module.id)));
         } catch (err) {
             console.error('Error fetching parent modules:', err);
@@ -58,7 +58,7 @@ export default function ModuleModal({ isOpen, onClose, module = null, onSuccess 
         e.preventDefault();
         setLoading(true);
         try {
-            const url = module ? `/api/modules/admin/${module.id}` : '/api/modules/admin';
+            const url = module ? `${API_BASE}/modules/admin/${module.id}` : `${API_BASE}/modules/admin`;
             const method = module ? 'PUT' : 'POST';
             await api({ method, url, data: formData });
             onSuccess();

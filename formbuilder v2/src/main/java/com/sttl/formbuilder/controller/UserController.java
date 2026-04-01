@@ -35,7 +35,7 @@ public class UserController {
      * Create a new account. Admin endpoint creates ADMIN, API endpoint creates
      * USER.
      */
-    @PostMapping({ "/admin/api/auth/register", "/api/auth/register" })
+    @PostMapping({ "${api.base-path}/admin/auth/register", "${api.base-path}/auth/register" })
     public ResponseEntity<?> register(@RequestBody Map<String, String> body, HttpServletRequest request) {
         try {
             String name = body.get("name");
@@ -49,7 +49,7 @@ public class UserController {
             if (password == null || password.length() < 6)
                 return ResponseEntity.badRequest().body(Map.of("message", "Password must be at least 6 characters"));
 
-            com.sttl.formbuilder.Enums.Role role = request.getRequestURI().startsWith("/admin")
+            com.sttl.formbuilder.Enums.Role role = request.getRequestURI().contains("/admin/")
                     ? com.sttl.formbuilder.Enums.Role.ADMIN
                     : com.sttl.formbuilder.Enums.Role.USER;
 
@@ -71,7 +71,7 @@ public class UserController {
      * POST /admin/api/auth/login OR /api/auth/login
      * Authenticate and create a session.
      */
-    @PostMapping({ "/admin/api/auth/login", "/api/auth/login" })
+    @PostMapping({ "${api.base-path}/admin/auth/login", "${api.base-path}/auth/login" })
     public ResponseEntity<?> login(@RequestBody Map<String, String> body, HttpServletRequest request) {
         String email = body.get("email");
         String password = body.get("password");
@@ -125,7 +125,7 @@ public class UserController {
      * POST /admin/api/auth/logout OR /api/auth/logout
      * Invalidate the session.
      */
-    @PostMapping({ "/admin/api/auth/logout", "/api/auth/logout" })
+    @PostMapping({ "${api.base-path}/admin/auth/logout", "${api.base-path}/auth/logout" })
     public ResponseEntity<?> logout(HttpServletRequest request, HttpServletResponse response) {
         HttpSession session = request.getSession(false);
         if (session != null) {
@@ -139,7 +139,7 @@ public class UserController {
      * PUT /admin/api/user/settings
      * Update global user settings.
      */
-    @PutMapping("/admin/api/user/settings")
+    @PutMapping("${api.base-path}/admin/user/settings")
     public ResponseEntity<?> updateSettings(@AuthenticationPrincipal User principal, @RequestBody Map<String, Object> body) {
         if (principal == null) {
             return ResponseEntity.status(401).body(Map.of("message", "Not authenticated"));
@@ -171,7 +171,7 @@ public class UserController {
      * GET /admin/api/auth/me OR /api/auth/me
      * Get the current logged-in user.
      */
-    @GetMapping({ "/admin/api/auth/me", "/api/auth/me" })
+    @GetMapping({ "${api.base-path}/admin/auth/me", "${api.base-path}/auth/me" })
     public ResponseEntity<?> me(@AuthenticationPrincipal User principal) {
         if (principal == null) {
             return ResponseEntity.status(401).body(Map.of("message", "Not authenticated"));
@@ -186,7 +186,7 @@ public class UserController {
      * GET /admin/api/users
      * List all sub-users managed by the current admin.
      */
-    @GetMapping("/admin/api/users")
+    @GetMapping("${api.base-path}/admin/users")
     public ResponseEntity<?> getSubUsers(@AuthenticationPrincipal User principal) {
         User adminUser = userService.getUserById(principal.getId());
         List<User> users = userService.getSubUsers(adminUser.getId());
@@ -204,7 +204,7 @@ public class UserController {
      * POST /admin/api/users
      * Admin creates a new sub-user with a specific AppRole.
      */
-    @PostMapping("/admin/api/users")
+    @PostMapping("${api.base-path}/admin/users")
     public ResponseEntity<?> createSubUser(@RequestBody Map<String, Object> body, @AuthenticationPrincipal User principal) {
         User adminUser = userService.getUserById(principal.getId());
         try {
@@ -235,7 +235,7 @@ public class UserController {
      * PUT /admin/api/users/{id}
      * Admin updates a sub-user's details (name, email, password, appRole).
      */
-    @PutMapping("/admin/api/users/{id}")
+    @PutMapping("${api.base-path}/admin/users/{id}")
     public ResponseEntity<?> updateSubUser(@PathVariable java.util.UUID id, @RequestBody Map<String, Object> body, @AuthenticationPrincipal User principal) {
         User adminUser = userService.getUserById(principal.getId());
         try {
@@ -267,7 +267,7 @@ public class UserController {
      * PUT /admin/api/users/{id}/role
      * Admin updates a sub-user's AppRole.
      */
-    @PutMapping("/admin/api/users/{id}/role")
+    @PutMapping("${api.base-path}/admin/users/{id}/role")
     public ResponseEntity<?> updateSubUserRole(@PathVariable java.util.UUID id, @RequestBody Map<String, Object> body, @AuthenticationPrincipal User principal) {
         User adminUser = userService.getUserById(principal.getId());
         try {
@@ -291,7 +291,7 @@ public class UserController {
      * DELETE /admin/api/users/{id}
      * Admin deletes a sub-user.
      */
-    @DeleteMapping("/admin/api/users/{id}")
+    @DeleteMapping("${api.base-path}/admin/users/{id}")
     public ResponseEntity<?> deleteSubUser(@PathVariable java.util.UUID id, @AuthenticationPrincipal User principal) {
         User adminUser = userService.getUserById(principal.getId());
         try {

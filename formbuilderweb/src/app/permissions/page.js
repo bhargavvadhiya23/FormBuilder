@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import DataTable from '@/components/DataTable';
 import ModuleModal from '@/components/ModuleModal';
 import Swal from 'sweetalert2';
-import api from '@/lib/api';
+import api, { API_BASE } from '@/lib/api';
 
 export default function PermissionsPage() {
     // ... rest of the component state ...
@@ -39,7 +39,7 @@ export default function PermissionsPage() {
 
     const fetchModules = async () => {
         try {
-            const res = await api.get('/api/modules/admin/all');
+            const res = await api.get(`${API_BASE}/modules/admin/all`);
             setAllModules(res.data);
         } catch (err) {
             console.error('Error fetching modules:', err);
@@ -49,7 +49,7 @@ export default function PermissionsPage() {
     const fetchRoles = async () => {
         try {
             setLoading(true);
-            const res = await api.get('/admin/api/roles');
+            const res = await api.get(`${API_BASE}/admin/roles`);
             setRoles(res.data);
         } catch (err) {
             setError(err.message);
@@ -119,7 +119,7 @@ export default function PermissionsPage() {
         };
 
         try {
-            const url = editingRole ? `/admin/api/roles/${editingRole.id}` : '/admin/api/roles';
+            const url = editingRole ? `${API_BASE}/admin/roles/${editingRole.id}` : `${API_BASE}/admin/roles`;
             const method = editingRole ? 'PUT' : 'POST';
 
             await api({
@@ -166,7 +166,7 @@ export default function PermissionsPage() {
 
         if (result.isConfirmed) {
             try {
-                await api.delete(`/admin/api/roles/${id}`);
+                await api.delete(`${API_BASE}/admin/roles/${id}`);
                 Swal.fire({
                     title: 'Deleted!',
                     text: 'Role has been deleted.',
@@ -204,7 +204,7 @@ export default function PermissionsPage() {
 
         if (result.isConfirmed) {
             try {
-                await api.delete(`/api/modules/admin/${id}`);
+                await api.delete(`${API_BASE}/modules/admin/${id}`);
                 Swal.fire({
                     title: 'Deleted!',
                     text: 'Module has been deleted.',

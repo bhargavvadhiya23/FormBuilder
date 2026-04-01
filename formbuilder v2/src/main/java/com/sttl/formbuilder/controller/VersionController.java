@@ -18,10 +18,10 @@ import com.sttl.formbuilder.service.SubmissionService;
 
 /**
  * Kept for backward compatibility.
- * New code should use /api/forms/{formId}/... endpoints in FormController.
+ * New code should use {api.base-path}/admin/forms/{formId}/... endpoints in FormController.
  */
 @RestController
-@RequestMapping("/admin/api/versions")
+@RequestMapping("${api.base-path}/admin/versions")
 public class VersionController {
 
     private final FormFieldRepository fieldRepository;

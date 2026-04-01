@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import ReactPaginate from 'react-paginate';
 import Swal from 'sweetalert2';
-import api from '@/lib/api';
+import api, { API_BASE } from '@/lib/api';
 import { useApp } from '@/lib/AppContext';
 
 export default function ApprovalsPage() {
@@ -38,7 +38,7 @@ export default function ApprovalsPage() {
     const fetchApprovals = async () => {
         try {
             setLoadingApprovals(true);
-            const res = await api.get('/admin/api/approvals');
+            const res = await api.get(`${API_BASE}/admin/approvals`);
             setApprovals(Array.isArray(res.data) ? res.data : []);
         } catch (err) {
             setError(err.message);
@@ -50,7 +50,7 @@ export default function ApprovalsPage() {
     const fetchMyRequests = async () => {
         try {
             setLoadingRequests(true);
-            const res = await api.get('/admin/api/approvals/my-requests');
+            const res = await api.get(`${API_BASE}/admin/approvals/my-requests`);
             setRequests(Array.isArray(res.data) ? res.data : []);
         } catch (err) {
             if (activeTab === 'history') setError(err.message);
@@ -86,7 +86,7 @@ export default function ApprovalsPage() {
 
         if (isConfirmed) {
             try {
-                await api.post(`/admin/api/approvals/${id}/${action}`, { adminNote });
+                await api.post(`${API_BASE}/admin/approvals/${id}/${action}`, { adminNote });
                 toast.success(`Request ${action}d successfully`);
                 fetchApprovals();
                 fetchMyRequests(); // Refresh history too as it might be updated

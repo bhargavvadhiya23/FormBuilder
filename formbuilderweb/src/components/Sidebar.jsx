@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useApp } from '@/lib/AppContext';
-import api from '@/lib/api';
+import api, { API_BASE } from '@/lib/api';
 
 const navItems = [
     { path: '/', label: 'Dashboard', icon: '🏠' },
@@ -28,7 +28,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
 
     const fetchMyModules = async () => {
         try {
-            const res = await api.get('/api/modules/my');
+            const res = await api.get(`${API_BASE}/modules/my`);
             setDynamicModules(res.data);
         } catch (err) {
             console.error('Error fetching dynamic modules:', err);

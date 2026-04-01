@@ -14,7 +14,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/admin/api/metadata")
+@RequestMapping("${api.base-path}/admin/metadata")
 public class MetadataController {
 
     private final JdbcTemplate jdbcTemplate;

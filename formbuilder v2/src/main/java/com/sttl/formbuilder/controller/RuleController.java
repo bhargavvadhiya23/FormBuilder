@@ -16,10 +16,10 @@ import java.util.UUID;
 /**
  * REST API for managing business rules per form.
  *
- * Base URL: /admin/api/forms/{formId}/rules
+ * Base URL: {api.base-path}/admin/forms/{formId}/rules
  */
 @RestController
-@RequestMapping("/admin/api/forms/{formId}/rules")
+@RequestMapping("${api.base-path}/admin/forms/{formId}/rules")
 public class RuleController {
 
     private final RuleService ruleService;

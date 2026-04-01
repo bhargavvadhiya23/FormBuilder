@@ -2,11 +2,11 @@ package com.sttl.formbuilder.config;
 
 import com.sttl.formbuilder.service.UserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -21,6 +21,10 @@ public class SecurityConfig {
 
     private final UserService userService;
     private final PasswordEncoder passwordEncoder;
+
+    /** Injected from application.properties — e.g. /api/v1 */
+    @Value("${api.base-path}")
+    private String apiBasePath;
 
     @Bean
     public DaoAuthenticationProvider authenticationProvider() {
@@ -42,6 +46,12 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        // Derive all versioned path prefixes from the single configurable property
+        String adminBase   = apiBasePath + "/admin";
+        String authBase    = apiBasePath + "/auth";
+        String filesBase   = apiBasePath + "/files";
+        String publishBase = apiBasePath + "/publish";
+
         http
                 // Disable CSRF for REST API (frontend uses sessions with SameSite cookies)
                 .csrf(csrf -> csrf.disable())
@@ -62,34 +72,32 @@ public class SecurityConfig {
 
                 // Route-level access control
                 .authorizeHttpRequests(auth -> auth
-                        // Public auth endpoints
+                        // Public auth endpoints (admin login/register + user login/register)
                         .requestMatchers(
-                                "/admin/api/auth/login",
-                                "/admin/api/auth/register",
-                                "/api/auth/login",
-                                "/api/auth/register")
+                                adminBase + "/auth/login",
+                                adminBase + "/auth/register",
+                                authBase  + "/login",
+                                authBase  + "/register")
                         .permitAll()
 
-                        // Public form endpoints
+                        // Public form endpoints (no authentication required)
                         .requestMatchers(
-                                "/publish/**",
-                                "/api/files/**")
+                                publishBase + "/**",
+                                filesBase   + "/**")
                         .permitAll()
 
-                        // Define admin-only routes for the new permission system
-                        // Using hasAnyRole("ADMIN", "USER") because custom roles are assigned to Users
+                        // Admin-only management routes
                         .requestMatchers(
-                                "/admin/api/roles/**",
-                                "/admin/api/users/**",
-                                "/admin/api/approvals/**"
+                                adminBase + "/roles/**",
+                                adminBase + "/users/**",
+                                adminBase + "/approvals/**"
                         ).hasAnyRole("ADMIN", "USER")
 
                         // All admin routes accessible by either role
-                        .requestMatchers("/admin/**").hasAnyRole("ADMIN", "USER")
+                        .requestMatchers(adminBase + "/**").hasAnyRole("ADMIN", "USER")
 
-                        // All other /api/** routes also require authentication (with USER or ADMIN
-                        // role)
-                        .requestMatchers("/api/**").authenticated()
+                        // All other versioned /api/** routes require authentication
+                        .requestMatchers(apiBasePath + "/**").authenticated()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .anyRequest().authenticated())
 
