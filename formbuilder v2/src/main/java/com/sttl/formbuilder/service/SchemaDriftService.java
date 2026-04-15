@@ -3,6 +3,7 @@ package com.sttl.formbuilder.service;
 import com.sttl.formbuilder.entity.FormField;
 import com.sttl.formbuilder.entity.FormVersion;
 import com.sttl.formbuilder.exception.SchemaDriftException;
+import com.sttl.formbuilder.repository.FormFieldRepository;
 import com.sttl.formbuilder.util.SqlTypeMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,14 +17,16 @@ public class SchemaDriftService {
 
     private static final Logger log = LoggerFactory.getLogger(SchemaDriftService.class);
     private final JdbcTemplate jdbcTemplate;
+    private final FormFieldRepository formFieldRepository;
 
     // Metadata columns that are expected in every submission table
     private static final Set<String> METADATA_COLUMNS = Set.of(
             "id", "submitted_at", "submitted_by", "version_id", "status", "deleted"
     );
 
-    public SchemaDriftService(JdbcTemplate jdbcTemplate) {
+    public SchemaDriftService(JdbcTemplate jdbcTemplate, FormFieldRepository formFieldRepository) {
         this.jdbcTemplate = jdbcTemplate;
+        this.formFieldRepository = formFieldRepository;
     }
 
     /**
@@ -68,6 +71,13 @@ public class SchemaDriftService {
             expectedSchema.put(key, normalizeExpectedType(sqlType));
         }
 
+        // App-level schema evolution keeps old columns in the same table. These must not be
+        // treated as drift when fields are removed in a newer form version.
+        Set<String> allowedAppManagedColumns = new HashSet<>(expectedSchema.keySet());
+        if (version.getForm() != null && version.getForm().getId() != null) {
+            allowedAppManagedColumns.addAll(formFieldRepository.findDistinctSchemaFieldKeysByFormId(version.getForm().getId()));
+        }
+
         // 3. Compare Columns
         List<String> driftDetails = new ArrayList<>();
 
@@ -87,7 +97,7 @@ public class SchemaDriftService {
 
         // Check for extra columns (ignoring metadata)
         for (String actualCol : actualSchema.keySet()) {
-            if (!expectedSchema.containsKey(actualCol) && !METADATA_COLUMNS.contains(actualCol)) {
+            if (!allowedAppManagedColumns.contains(actualCol) && !METADATA_COLUMNS.contains(actualCol)) {
                 driftDetails.add("Unexpected extra column: " + actualCol);
             }
         }
