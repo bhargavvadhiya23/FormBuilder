@@ -26,6 +26,7 @@ public class PublicFormController {
     private final FormFieldRepository fieldRepository;
     private final SubmissionService submissionService;
     private final RuleService ruleService;
+    private final com.sttl.formbuilder.service.SchemaDriftService schemaDriftService;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     /**
@@ -55,6 +56,10 @@ public class PublicFormController {
             }
 
             List<FormField> fields = fieldRepository.findByVersion_IdOrderByFieldOrder(version.getId());
+
+            // ─── PRE-LOAD DRIFT CHECK ─────────────────────────────────────
+            schemaDriftService.validateSchema(version, fields);
+            // ──────────────────────────────────────────────────────────────
 
             Long existingSubmissionId = submissionService.getUserSubmissionId(version.getId());
 
@@ -166,6 +171,11 @@ public class PublicFormController {
         FormVersion version = formService.getPublishedVersion(formId)
                 .orElseThrow(() -> new RuntimeException("This form is not published"));
 
+        // ─── DRIFT CHECK ─────────────────────────────────────────────────────
+        List<FormField> fields = fieldRepository.findByVersion_IdOrderByFieldOrder(version.getId());
+        schemaDriftService.validateSchema(version, fields);
+        // ─────────────────────────────────────────────────────────────────────
+
         return ResponseEntity.ok(submissionService.getSubmission(version.getId(), submissionId));
     }
 
@@ -194,6 +204,11 @@ public class PublicFormController {
             @RequestBody Map<String, Object> data) {
         FormVersion version = formService.getPublishedVersion(formId)
                 .orElseThrow(() -> new RuntimeException("This form is not published"));
+
+        // ─── DRIFT CHECK ─────────────────────────────────────────────────────
+        List<FormField> fields = fieldRepository.findByVersion_IdOrderByFieldOrder(version.getId());
+        schemaDriftService.validateSchema(version, fields);
+        // ─────────────────────────────────────────────────────────────────────
 
         submissionService.updateSubmission(version.getId(), submissionId, data);
         java.util.Map<String, String> response = new java.util.HashMap<>();

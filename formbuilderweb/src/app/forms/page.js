@@ -110,19 +110,21 @@ export default function FormsPage() {
     const isPermanent = viewingTrash || !softDelete;
 
     const result = await Swal.fire({
-      title: 'Delete Permanently?',
-      text: `"${formName}" will be permanently removed. This action cannot be undone.`,
+      title: isPermanent ? 'Delete Permanently?' : 'Move to Trash?',
+      text: isPermanent 
+        ? `"${formName}" will be permanently removed. This action cannot be undone.`
+        : `"${formName}" will be moved to the trash bin. You can restore it later.`,
       icon: 'warning',
       showCancelButton: true,
-      background: 'var(--bg-secondary)',
-      color: 'var(--text-primary)',
-      confirmButtonColor: '#d93025',
-      cancelButtonColor: 'var(--bg-primary)',
-      confirmButtonText: 'Delete Permanently',
+      background: 'var(--gf-surface)',
+      color: 'var(--gf-text)',
+      confirmButtonColor: isPermanent ? '#d93025' : 'var(--gf-purple)',
+      cancelButtonColor: 'var(--gf-surface)',
+      confirmButtonText: isPermanent ? 'Delete Permanently' : 'Move to Trash',
       cancelButtonText: 'Cancel',
       reverseButtons: true,
       customClass: {
-        confirmButton: 'gf-btn gf-btn-danger',
+        confirmButton: isPermanent ? 'gf-btn gf-btn-danger' : 'gf-btn gf-btn-primary',
         cancelButton: 'gf-btn gf-btn-ghost'
       }
     });
@@ -130,7 +132,7 @@ export default function FormsPage() {
     if (result.isConfirmed) {
       try {
         const res = await formsApi.delete(formId);
-        toast.success(res.data?.message || 'Form deleted permanently');
+        toast.success(res.data?.message || (isPermanent ? 'Form deleted permanently' : 'Form moved to trash'));
         if (res.status === 202) {
           router.push('/');
         } else {
@@ -165,19 +167,21 @@ export default function FormsPage() {
     const isPermanent = viewingTrash || !softDelete;
 
     const result = await Swal.fire({
-      title: 'Delete Permanently?',
-      text: `You have selected ${selectedForms.length} forms. This action cannot be undone.`,
+      title: isPermanent ? 'Delete Permanently?' : 'Move to Trash?',
+      text: isPermanent 
+        ? `You have selected ${selectedForms.length} forms to be permanently removed. This action cannot be undone.`
+        : `You have selected ${selectedForms.length} forms to be moved to the trash bin.`,
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonColor: '#d93025',
-      confirmButtonText: 'Delete Permanently',
+      confirmButtonColor: isPermanent ? '#d93025' : 'var(--gf-purple)',
+      confirmButtonText: isPermanent ? 'Delete Permanently' : 'Move to Trash',
       reverseButtons: true
     });
 
     if (result.isConfirmed) {
       try {
         const res = await formsApi.bulkDeleteForms(selectedForms);
-        toast.success(res.data?.message || 'Forms deleted permanently');
+        toast.success(res.data?.message || (isPermanent ? 'Forms deleted permanently' : 'Forms moved to trash'));
         if (res.status === 202) {
           router.push('/');
         } else {
@@ -361,12 +365,12 @@ export default function FormsPage() {
               )
             )}
 
-            {(user?.role === 'ADMIN' || user?.permissions?.includes(isPub ? 'DELETE_PUBLISHED_FORM' : 'DELETE_DRAFT_FORM')) && (
+            {!viewingTrash && (user?.role === 'ADMIN' || user?.permissions?.includes(isPub ? 'DELETE_PUBLISHED_FORM' : 'DELETE_DRAFT_FORM')) && (
               <button 
                 className="gf-btn gf-btn-ghost gf-btn-sm" 
                 onClick={() => handleDelete(form.id, form.name)} 
-                title={viewingTrash ? "Delete Permanently" : "Delete Form"}
-                style={{ color: 'var(--gf-red)', flex: viewingTrash ? '0 0 auto' : 'none' }}
+                title="Delete Form"
+                style={{ color: 'var(--gf-red)' }}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>delete</span>
               </button>
@@ -384,13 +388,13 @@ export default function FormsPage() {
           <p>{viewingTrash ? 'Recover or permanently delete your forms' : 'Create, edit and manage your forms'}</p>
         </div>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          {/* <button 
+          <button 
             className={`gf-btn ${viewingTrash ? 'gf-btn-primary' : 'gf-btn-outline'}`}
             onClick={() => setViewingTrash(!viewingTrash)}
-            style={viewingTrash ? { background: 'var(--gf-red)', borderColor: 'var(--gf-red)' } : {}}
+            style={viewingTrash ? { background: 'var(--gf-purple)', borderColor: 'var(--gf-purple)' } : {}}
           >
             {viewingTrash ? '← Back to Forms' : '🗑 View Trash'}
-          </button> */}
+          </button>
           {!viewingTrash && <Link href="/forms/create" className="gf-btn gf-btn-primary">＋ New Form</Link>}
         </div>
       </div>
@@ -536,20 +540,14 @@ export default function FormsPage() {
           </div>
           <div className="bulk-actions">
             {viewingTrash ? (
-              <>
-                <button className="gf-btn gf-btn-secondary gf-btn-sm" onClick={handleBulkRecover}>
-                  <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>restore</span>
-                  Recover
-                </button>
-                <button className="gf-btn gf-btn-danger gf-btn-sm" onClick={handleBulkDelete}>
-                  <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>delete</span>
-                  Delete Permanently
-                </button>
-              </>
+              <button className="gf-btn gf-btn-secondary gf-btn-sm" onClick={handleBulkRecover}>
+                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>restore</span>
+                Recover ({selectedForms.length})
+              </button>
             ) : (
               <button className="gf-btn gf-btn-danger gf-btn-sm" onClick={handleBulkDelete}>
                 <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>delete</span>
-                Delete Permanently
+                Delete ({selectedForms.length})
               </button>
             )}
           </div>

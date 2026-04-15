@@ -184,7 +184,7 @@ function validateField(field, value) {
   return null;
 }
 
-function FieldRenderer({ field, value, onChange, error, formId }) {
+function FieldRenderer({ field, value, onChange, error, formId, uploadConfig }) {
   const options = field.options ? JSON.parse(field.options) : [];
 
   const inputClass = `fill-input${error ? ' error' : ''}`;
@@ -286,6 +286,16 @@ function FieldRenderer({ field, value, onChange, error, formId }) {
             e.target.value = ''; // clear input
             return;
           }
+        }
+
+        // Size validation (Dynamic)
+        const MAX_SIZE = uploadConfig?.maxBytes || (5 * 1024 * 1024);
+        const MAX_LABEL = uploadConfig?.maxLabel || "5MB";
+        
+        if (file.size > MAX_SIZE) {
+          alert(`File is too large. Maximum allowed size is ${MAX_LABEL}.`);
+          e.target.value = ''; // clear input
+          return;
         }
 
         setUploading(true);
@@ -565,6 +575,7 @@ export default function PublicFillPage({ params }) {
   const [notFound, setNotFound]       = useState(false);
   const [alreadySubmitted, setAlreadySubmitted] = useState(false);
   const [submissionIdState, setSubmissionIdState] = useState('');
+  const [driftError, setDriftError] = useState(null);
 
   const [closed, setClosed]           = useState(false);
   const [closedMessage, setClosedMessage] = useState('');
@@ -579,6 +590,7 @@ export default function PublicFillPage({ params }) {
   const [isNewResponse, setIsNewResponse] = useState(false);
   const [isContinuingDraft, setIsContinuingDraft] = useState(false);
   const [hasDraftState, setHasDraftState] = useState(false);
+  const [uploadConfig, setUploadConfig] = useState(null);
 
   useEffect(() => {
     if (isAuthLoaded && !user) {
@@ -589,9 +601,11 @@ export default function PublicFillPage({ params }) {
 
     Promise.all([
       formsApi.getPublished(formId),
-      rulesApi.getPublicRules(formId).catch(() => ({ data: [] }))
+      rulesApi.getPublicRules(formId).catch(() => ({ data: [] })),
+      formsApi.getUploadConfig().catch(() => ({ data: { maxBytes: 5242880, maxLabel: '5MB' } }))
     ])
-      .then(async ([resForm, resRules]) => {
+      .then(async ([resForm, resRules, resConfig]) => {
+        setUploadConfig(resConfig.data);
         const formFields = Array.isArray(resForm.data.fields) ? resForm.data.fields : [];
         const publishedVersionId = resForm.data.versionId;
         setFormData(resForm.data.form);
@@ -665,8 +679,10 @@ export default function PublicFillPage({ params }) {
           } catch {
             setClosedMessage(err.message);
           }
-        } else if (err.message && err.message.includes('deleted')) {
+        } else if (err.message && err.message.toLowerCase().includes('deleted')) {
           setDeleted(true);
+        } else if (err.message && err.message.toLowerCase().includes('drift')) {
+          setDriftError(err.message);
         } else {
           console.error("Error loading form:", err);
           setSubmitError(err.message || "Failed to load form. Please try again later.");
@@ -869,9 +885,19 @@ export default function PublicFillPage({ params }) {
     setAlreadySubmitted(false);
   };
 
-  if (loading || !isAuthLoaded || !user) return (
+  if (loading) return <div className="fill-page"><div className="gf-loader"><div className="gf-spinner" /></div></div>;
+
+  if (driftError) return (
     <div className="fill-page">
-      <div className="gf-loader"><div className="gf-spinner" /><span>Loading form...</span></div>
+      <div className="success-card" style={{ borderTop: '10px solid #d93025' }}>
+        <div className="success-icon" style={{ background: '#fce8e6', color: '#d93025' }}>⚠️</div>
+        <div className="success-title" style={{ color: '#d93025' }}>Form Temporarily Unavailable</div>
+        <div className="success-subtitle">{driftError}</div>
+        <p style={{ marginTop: '16px', color: '#5f6368' }}>This form is currently undergoing maintenance due to schema inconsistencies. Please try again later or contact the administrator.</p>
+        <button className="gf-btn gf-btn-outline" onClick={() => window.location.reload()} style={{ marginTop: '20px' }}>
+          🔄 Retry
+        </button>
+      </div>
     </div>
   );
 
@@ -1087,6 +1113,7 @@ export default function PublicFillPage({ params }) {
                           onChange={val => setAnswer(field.fieldKey, val)}
                           error={!!errors[field.fieldKey] || !!dynamicErrors[field.fieldKey]}
                           formId={formId}
+                          uploadConfig={uploadConfig}
                         />
                       </fieldset>
                     )}

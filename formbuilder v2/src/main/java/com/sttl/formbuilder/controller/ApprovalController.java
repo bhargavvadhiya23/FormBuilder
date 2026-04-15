@@ -1,5 +1,6 @@
 package com.sttl.formbuilder.controller;
 
+import com.sttl.formbuilder.entity.Form;
 import com.sttl.formbuilder.service.ApprovalService;
 import com.sttl.formbuilder.service.FormService;
 import com.sttl.formbuilder.service.UserService;
@@ -7,6 +8,7 @@ import com.sttl.formbuilder.entity.ApprovalRequest;
 import com.sttl.formbuilder.entity.User;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -17,7 +19,7 @@ import java.util.*;
  */
 @RestController
 @RequestMapping("${api.base-path}/admin/approvals")
-@org.springframework.transaction.annotation.Transactional
+@Transactional
 public class ApprovalController {
 
     private final ApprovalService approvalService;
@@ -133,7 +135,7 @@ public class ApprovalController {
         String referenceName = "Unknown";
         try {
             UUID formId = UUID.fromString(req.getReferenceId());
-            Optional<com.sttl.formbuilder.entity.Form> formOpt = formService.findFormById(formId);
+            Optional<Form> formOpt = formService.findFormById(formId);
             if (formOpt.isPresent()) {
                 referenceName = formOpt.get().getName();
             }

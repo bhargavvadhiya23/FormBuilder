@@ -276,6 +276,7 @@ export default function PublicEditPage({ params }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
+  const [driftError, setDriftError] = useState(null);
   const [currentPage, setCurrentPage] = useState(0);
 
   useEffect(() => {
@@ -298,7 +299,11 @@ export default function PublicEditPage({ params }) {
     })
     .catch(err => {
       console.error(err);
-      setError(err.message || 'Failed to load your response.');
+      if (err.message && err.message.toLowerCase().includes('drift')) {
+        setDriftError(err.message);
+      } else {
+        setError(err.message || 'Failed to load your response.');
+      }
     })
     .finally(() => setLoading(false));
   }, [formId, submissionId, isAuthLoaded, user, router]);
@@ -413,6 +418,21 @@ export default function PublicEditPage({ params }) {
   };
 
   if (loading) return <div className="fill-page"><div className="gf-loader"><div className="gf-spinner" /></div></div>;
+
+  if (driftError) return (
+    <div className="fill-page">
+      <div className="success-card" style={{ borderTop: '10px solid #d93025' }}>
+        <div className="success-icon" style={{ background: '#fce8e6', color: '#d93025' }}>⚠️</div>
+        <div className="success-title" style={{ color: '#d93025' }}>Submission Locked</div>
+        <div className="success-subtitle">{driftError}</div>
+        <p style={{ marginTop: '16px', color: '#5f6368' }}>This submission cannot be edited because the form's database structure has changed. Please contact the form owner.</p>
+        <button className="gf-btn gf-btn-outline" onClick={() => window.location.reload()} style={{ marginTop: '20px' }}>
+          🔄 Retry
+        </button>
+      </div>
+    </div>
+  );
+
   if (error) return <div className="fill-page"><div className="gf-alert-error">{error}</div></div>;
 
   if (submitted) return (

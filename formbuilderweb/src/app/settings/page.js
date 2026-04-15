@@ -45,25 +45,6 @@ export default function SettingsPage() {
                 <div className="gf-card-body">
                     <h3 style={{ marginBottom: '16px', fontSize: '1.1rem', color: 'var(--gf-text-primary)' }}>General Settings</h3>
                     
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 0', borderBottom: '1px solid var(--gf-border)' }}>
-                        <div>
-                            <div style={{ fontWeight: '500', marginBottom: '4px' }}>Soft Delete</div>
-                            <div style={{ fontSize: '0.85rem', color: 'var(--gf-text-secondary)' }}>
-                                When enabled, deleted forms and responses are moved to a Trash Bin instead of being permanently removed.
-                            </div>
-                        </div>
-                        <div className="gf-switch-container">
-                            <label className="gf-switch">
-                                <input 
-                                    type="checkbox" 
-                                    checked={softDelete} 
-                                    onChange={handleToggle} 
-                                    disabled={saving}
-                                />
-                                <span className="gf-slider round"></span>
-                            </label>
-                        </div>
-                    </div>
 
                     <div style={{ padding: '16px 0', opacity: 0.6 }}>
                         <div style={{ fontWeight: '500', marginBottom: '4px' }}>Email Notifications (Coming Soon)</div>

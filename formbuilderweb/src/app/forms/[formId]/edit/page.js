@@ -157,6 +157,7 @@ export default function FormEditPage({ params }) {
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleted, setDeleted] = useState(false);
+  const [driftError, setDriftError] = useState(null);
   const [status, setStatus] = useState({ published: false, shareLink: null });
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -225,6 +226,8 @@ export default function FormEditPage({ params }) {
       } catch (e) {
         if (e.message && e.message.toLowerCase().includes('deleted')) {
           setDeleted(true);
+        } else if (e.message && e.message.toLowerCase().includes('drift')) {
+          setDriftError(e.message);
         } else {
           toast.error(e.message || "Failed to load form");
         }
@@ -688,6 +691,20 @@ export default function FormEditPage({ params }) {
         <h1>This form has been deleted.</h1>
         <p>This form is currently in the trash. You must recover it before you can make any changes.</p>
         <Link href="/forms" className="gf-btn gf-btn-primary">Back to My Forms</Link>
+      </div>
+    </div>
+  );
+
+  if (driftError) return (
+    <div className="gf-error-page">
+      <div className="gf-error-card" style={{ borderColor: '#d93025' }}>
+        <h1 style={{ color: '#d93025' }}>⚠️ Database Schema Drift Detected</h1>
+        <p style={{ fontWeight: '500' }}>{driftError}</p>
+        <p>The database table for this form has been modified outside of this application. To prevent data corruption, editing is disabled.</p>
+        <div style={{ marginTop: '20px', display: 'flex', gap: '12px', justifyContent: 'center' }}>
+            <Link href="/forms" className="gf-btn gf-btn-outline">Back to My Forms</Link>
+            <button className="gf-btn gf-btn-primary" onClick={() => window.location.reload()}>🔄 Retry Check</button>
+        </div>
       </div>
     </div>
   );
@@ -1413,21 +1430,6 @@ export default function FormEditPage({ params }) {
                     </div>
                   ))}
 
-                  {/* Custom Regex */}
-                  <div style={{marginTop: '10px'}}>
-                    <label style={{fontSize: '0.8rem', color: 'var(--gf-text-secondary)', display: 'block', marginBottom: '4px'}}>Custom Regex</label>
-                    <input className="settings-input"
-                      placeholder="e.g. ^\\d{4}$"
-                      value={questions[activeIdx].customRegex}
-                      onChange={e => updateQ(activeIdx, 'customRegex', e.target.value)}
-                      disabled={status.published && questions[activeIdx].isOriginal}
-                    />
-                    {questions[activeIdx].customRegex && (
-                      <div style={{fontSize: '0.72rem', color: '#f59e0b', marginTop: '4px', lineHeight: '1.4'}}>
-                        ⚠ Your regex must align with your other settings (e.g. if &quot;Letters only&quot; is set, don&apos;t allow digits in your regex).
-                      </div>
-                    )}
-                  </div>
                 </div>
               )}
 
@@ -1470,20 +1472,6 @@ export default function FormEditPage({ params }) {
                     </div>
                   ))}
 
-                  {/* Custom Regex */}
-                  <div style={{marginTop: '10px'}}>
-                    <label style={{fontSize: '0.8rem', color: 'var(--gf-text-secondary)', display: 'block', marginBottom: '4px'}}>Custom Regex</label>
-                    <input className="settings-input"
-                      placeholder={questions[activeIdx].fieldType === 'PHONE' ? "e.g. ^\\d{10}$" : "e.g. ^[a-z]+@company\\.com$"}
-                      value={questions[activeIdx].customRegex}
-                      onChange={e => updateQ(activeIdx, 'customRegex', e.target.value)}
-                    />
-                    {questions[activeIdx].customRegex && (
-                      <div style={{fontSize: '0.72rem', color: '#f59e0b', marginTop: '4px', lineHeight: '1.4'}}>
-                        ⚠ Your regex must align with your other settings.
-                      </div>
-                    )}
-                  </div>
                 </div>
               )}
 

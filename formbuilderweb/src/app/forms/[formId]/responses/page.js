@@ -76,7 +76,7 @@ function validateField(field, value) {
   return null;
 }
 
-function FieldRenderer({ field, value, onChange, error, formId }) {
+function FieldRenderer({ field, value, onChange, error, formId, uploadConfig }) {
   const options = field.options ? JSON.parse(field.options) : [];
   const inputClass = `fill-input${error ? ' error' : ''}`;
 
@@ -248,6 +248,16 @@ function FieldRenderer({ field, value, onChange, error, formId }) {
           }
         }
 
+        // Size validation (Dynamic)
+        const MAX_SIZE = uploadConfig?.maxBytes || (5 * 1024 * 1024);
+        const MAX_LABEL = uploadConfig?.maxLabel || "5MB";
+
+        if (file.size > MAX_SIZE) {
+          alert(`File is too large. Maximum allowed size is ${MAX_LABEL}.`);
+          e.target.value = '';
+          return;
+        }
+
         setUploading(true);
         try {
           const res = await formsApi.uploadFile(file);
@@ -322,6 +332,7 @@ export default function ResponsesPage({ params }) {
   const [viewingTrash, setViewingTrash] = useState(false);
   const [versions, setVersions] = useState([]);
   const [selectedVersionId, setSelectedVersionId] = useState('');
+  const [uploadConfig, setUploadConfig] = useState(null);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -341,13 +352,15 @@ export default function ResponsesPage({ params }) {
       formsApi.getById(formId),
       viewingTrash ? formsApi.getTrashSubmissions(formId) : (versionToFetch ? formsApi.getVersionSubmissions(versionToFetch) : formsApi.getResponses(formId)),
       formsApi.getPublished(formId),
-      rulesApi.getRules(formId).catch(() => ({ data: [] }))
+      rulesApi.getRules(formId).catch(() => ({ data: [] })),
+      formsApi.getUploadConfig().catch(() => ({ data: { maxBytes: 5242880, maxLabel: '5MB' } }))
     ];
 
-    Promise.all(apiCalls).then(([fRes, rRes, pubRes, rulesRes]) => {
+    Promise.all(apiCalls).then(([fRes, rRes, pubRes, rulesRes, configRes]) => {
       setForm(fRes.data);
       setResponses(Array.isArray(rRes.data) ? rRes.data : []);
       setRules((rulesRes.data || []).filter(r => r.enabled));
+      setUploadConfig(configRes.data);
       // If we fetched a specific version, use its fields. If not, use current published ones.
       if (versionToFetch) {
         formsApi.getVersionFields(versionToFetch).then(vfRes => {
@@ -523,18 +536,28 @@ export default function ResponsesPage({ params }) {
     const isPermanent = viewingTrash || !softDeleteEnabled;
 
     const result = await Swal.fire({
-      title: "Delete Permanently?",
-      text: "This response will be permanently removed. This action cannot be undone.",
+      title: isPermanent ? "Delete Permanently?" : "Move to Trash?",
+      text: isPermanent 
+        ? "This response will be permanently removed. This action cannot be undone."
+        : "This response will be moved to the trash bin. You can restore it later.",
       icon: "warning",
       showCancelButton: true,
-      confirmButtonColor: "#d33",
-      confirmButtonText: "Delete Permanently",
+      background: 'var(--gf-surface)',
+      color: 'var(--gf-text)',
+      confirmButtonColor: isPermanent ? "#d33" : "var(--gf-purple)",
+      confirmButtonText: isPermanent ? "Delete Permanently" : "Move to Trash",
+      cancelButtonText: "Cancel",
+      reverseButtons: true,
+      customClass: {
+        confirmButton: isPermanent ? 'gf-btn gf-btn-danger' : 'gf-btn gf-btn-primary',
+        cancelButton: 'gf-btn gf-btn-ghost'
+      }
     });
 
     if (result.isConfirmed) {
       try {
         await formsApi.deleteResponse(formId, respId);
-        toast.success("Response deleted permanently");
+        toast.success(isPermanent ? "Response deleted permanently" : "Response moved to trash");
         fetchData();
       } catch (e) {
         toast.error(e.message || "Delete failed");
@@ -559,19 +582,24 @@ export default function ResponsesPage({ params }) {
     const isPermanent = viewingTrash || !softDeleteEnabled;
 
     const res = await Swal.fire({
-      title: 'Delete Permanently?',
-      text: `You have selected ${selectedRows.length} responses. This action cannot be undone.`,
+      title: isPermanent ? 'Delete Permanently?' : 'Move to Trash?',
+      text: isPermanent 
+        ? `You have selected ${selectedRows.length} responses to be permanently removed. This action cannot be undone.`
+        : `You have selected ${selectedRows.length} responses to be moved to the trash bin.`,
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonColor: '#d33',
-      confirmButtonText: 'Delete Permanently'
+      background: 'var(--gf-surface)',
+      color: 'var(--gf-text)',
+      confirmButtonColor: isPermanent ? '#d33' : 'var(--gf-purple)',
+      confirmButtonText: isPermanent ? 'Delete Permanently' : 'Move to Trash',
+      reverseButtons: true
     });
 
     if (res.isConfirmed) {
       try {
         const ids = selectedRows.map(r => r.id);
         await formsApi.bulkDeleteResponses(formId, ids);
-        toast.success("Responses permanently deleted");
+        toast.success(isPermanent ? "Responses permanently deleted" : "Responses moved to trash");
         setToggleCleared(!toggleCleared);
         setSelectedRows([]);
         fetchData();
@@ -750,14 +778,9 @@ export default function ResponsesPage({ params }) {
               </button>
             </>
           ) : (
-            <>
-              <button className="gf-btn gf-btn-ghost gf-btn-sm" onClick={() => handleRecoverResponse(row.id)} title="Recover" style={{ color: 'var(--gf-green)' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>settings_backup_restore</span>
-              </button>
-              <button className="gf-btn gf-btn-ghost gf-btn-sm" onClick={() => handleDeleteResponse(row.id)} title="Delete Permanently" style={{ color: 'var(--gf-red)' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>delete_forever</span>
-              </button>
-            </>
+            <button className="gf-btn gf-btn-ghost gf-btn-sm" onClick={() => handleRecoverResponse(row.id)} title="Recover" style={{ color: 'var(--gf-green)' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>settings_backup_restore</span>
+            </button>
           )}
         </div>
       ),
@@ -867,13 +890,13 @@ export default function ResponsesPage({ params }) {
           <h1 style={{ marginTop: '4px' }}>{form?.name} — Responses</h1>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-{/* <button 
+          <button 
             className={`gf-btn ${viewingTrash ? 'gf-btn-primary' : 'gf-btn-outline'}`} 
             onClick={() => setViewingTrash(!viewingTrash)}
-            style={viewingTrash ? { background: 'var(--gf-text-secondary)' } : {}}
+            style={viewingTrash ? { background: 'var(--gf-purple)', borderColor: 'var(--gf-purple)' } : {}}
           >
             {viewingTrash ? '📄 View Responses' : '🗑️ View Trash'}
-          </button> */}
+          </button>
           {!viewingTrash && <button className="gf-btn gf-btn-primary" onClick={openAddModal}>＋ Add Response</button>}
           <button className="gf-btn gf-btn-outline" onClick={() => exportCsv()}>📥 Export All (CSV)</button>
           <button className="gf-btn gf-btn-outline" onClick={copyLink}>🔗 Copy Form Link</button>
@@ -1089,13 +1112,6 @@ export default function ResponsesPage({ params }) {
                       <span className="material-symbols-outlined" style={{ fontSize: '18px', marginRight: '4px' }}>restore</span>
                       Recover ({selectedRows.length})
                     </button>
-                    <button 
-                      className="gf-btn gf-btn-danger gf-btn-sm" 
-                      onClick={handleBulkDelete}
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: '18px', marginRight: '4px' }}>delete_forever</span>
-                      Delete ({selectedRows.length})
-                    </button>
                   </>
                 ) : (
                   <button 
@@ -1214,6 +1230,7 @@ export default function ResponsesPage({ params }) {
                               }}
                               error={!!hasError}
                               formId={formId}
+                              uploadConfig={uploadConfig}
                             />
                           </fieldset>
                           {hasError && (

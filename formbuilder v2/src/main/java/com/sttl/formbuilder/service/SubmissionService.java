@@ -32,17 +32,23 @@ public class SubmissionService {
     private final FormFieldRepository fieldRepository;
     private final RuleService ruleService;
     private final UserRepository userRepository;
+    private final SchemaService schemaService;
+    private final SchemaDriftService schemaDriftService;
 
     public SubmissionService(JdbcTemplate jdbcTemplate,
             FormVersionRepository versionRepository,
             FormFieldRepository fieldRepository,
             RuleService ruleService,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            SchemaService schemaService,
+            SchemaDriftService schemaDriftService) {
         this.jdbcTemplate = jdbcTemplate;
         this.versionRepository = versionRepository;
         this.fieldRepository = fieldRepository;
         this.ruleService = ruleService;
         this.userRepository = userRepository;
+        this.schemaService = schemaService;
+        this.schemaDriftService = schemaDriftService;
     }
 
     /**
@@ -56,6 +62,15 @@ public class SubmissionService {
                 .orElseThrow(() -> new RuntimeException("Version not found"));
 
         validateFormStatus(version);
+
+        // ─── DRIFT CHECK ─────────────────────────────────────────────────────
+        if (schemaService.isDrifted(version.getTableName())) {
+             throw new com.sttl.formbuilder.exception.SchemaDriftException("Submission blocked: Database schema drift detected in table '" + version.getTableName() + "'. Please contact the administrator.");
+        }
+        // Live check for extra robustness
+        List<FormField> expectedFields = fieldRepository.findByVersion_IdOrderByFieldOrder(versionId);
+        schemaDriftService.validateSchema(version, expectedFields);
+        // ─────────────────────────────────────────────────────────────────────
 
         // Get current authenticated user
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -309,6 +324,15 @@ public class SubmissionService {
         FormVersion version = versionRepository.findById(versionId)
                 .orElseThrow(() -> new RuntimeException("Version not found"));
         validateFormStatus(version);
+
+        // ─── DRIFT CHECK ─────────────────────────────────────────────────────
+        if (schemaService.isDrifted(version.getTableName())) {
+             throw new com.sttl.formbuilder.exception.SchemaDriftException("Update blocked: Database schema drift detected in table '" + version.getTableName() + "'. Please contact the administrator.");
+        }
+        // Live check for extra robustness
+        List<FormField> expectedFields = fieldRepository.findByVersion_IdOrderByFieldOrder(versionId);
+        schemaDriftService.validateSchema(version, expectedFields);
+        // ─────────────────────────────────────────────────────────────────────
 
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         UUID userId = null;

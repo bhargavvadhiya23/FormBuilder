@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Formbuilder v2 - System Architecture</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; margin: 24px; color: #1f2937; line-height: 1.45; }
+    h1, h2, h3 { color: #111827; margin-top: 28px; }
+    h1 { margin-top: 0; }
+    .note { background: #eff6ff; border-left: 4px solid #2563eb; padding: 10px 12px; margin: 12px 0; }
+    .warn { background: #fff7ed; border-left: 4px solid #ea580c; padding: 10px 12px; margin: 12px 0; }
+    table { border-collapse: collapse; width: 100%; margin: 10px 0 18px; font-size: 13px; }
+    th, td { border: 1px solid #d1d5db; padding: 8px; vertical-align: top; }
+    th { background: #f3f4f6; text-align: left; }
+    code { background: #f3f4f6; padding: 1px 4px; border-radius: 4px; }
+    .mono { font-family: Consolas, Menlo, Monaco, monospace; }
+    .small { font-size: 12px; color: #4b5563; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+    .flow { background: #f9fafb; border: 1px solid #e5e7eb; padding: 12px; margin: 8px 0 14px; }
+    ul { margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <h1>Formbuilder v2 - System Architecture</h1>
+  <p class="small">Generated from current codebase inspection on 2026-04-10. Source root: <code>src/main/java/com/sttl/formbuilder</code>.</p>
+
+  <h2>1) System Overview</h2>
+  <div class="grid">
+    <div>
+      <h3>Architecture Style</h3>
+      <ul>
+        <li>Spring Boot monolith with MVC + REST controllers.</li>
+        <li>Session-based authentication (Spring Security + HTTP session cookie).</li>
+        <li>PostgreSQL with mixed persistence:
+          <ul>
+            <li>JPA entities for metadata and access control.</li>
+            <li>Dynamic SQL tables for form submissions.</li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+    <div>
+      <h3>API Base Path</h3>
+      <ul>
+        <li>Configured in <code>application.properties</code>: <code>api.base-path=/api/v1</code>.</li>
+        <li>Primary groups: <code>/api/v1/admin/*</code>, <code>/api/v1/auth/*</code>, <code>/api/v1/forms/*</code>, <code>/api/v1/publish/*</code>, <code>/api/v1/files/*</code>.</li>
+        <li>Legacy/compatibility endpoints still available under <code>/api/v1/admin/versions/*</code>.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>2) Layered Design and Data Flow</h2>
+  <table>
+    <thead>
+      <tr><th>Layer</th><th>Main Components</th><th>Responsibilities</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Controller</td>
+        <td><code>*Controller</code> classes</td>
+        <td>HTTP routing, request validation, auth principal access, response shaping.</td>
+      </tr>
+      <tr>
+        <td>Service</td>
+        <td><code>FormService</code>, <code>SchemaService</code>, <code>SubmissionService</code>, <code>RuleService</code>, <code>UserService</code>, <code>ApprovalService</code>, etc.</td>
+        <td>Business logic, permission/approval checks, rule engine execution, dynamic schema lifecycle, transactional orchestration.</td>
+      </tr>
+      <tr>
+        <td>Repository</td>
+        <td><code>*Repository</code> (Spring Data JPA)</td>
+        <td>Entity persistence for users, forms, fields, versions, roles, modules, approval requests, rules.</td>
+      </tr>
+      <tr>
+        <td>Database</td>
+        <td>PostgreSQL + dynamic tables (<code>form_data_*</code>)</td>
+        <td>Stores static metadata in normalized tables and submissions in dynamic version-linked tables.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>MVC + API Request/Response Flow</h3>
+  <div class="flow mono">
+    Client -> SecurityFilterChain -> Controller -> Service -> Repository/JdbcTemplate -> PostgreSQL
+      <- standardized JSON/CSV/Resource response <-
+  </div>
+
+  <h3>Core Transaction Flows</h3>
+  <div class="flow">
+    <strong>Flow A: Create and publish form</strong>
+    <ol>
+      <li><code>POST /api/v1/admin/forms</code> or <code>/api/v1/forms</code> creates <code>forms</code> row + initial <code>form_versions(DRAFT)</code>.</li>
+      <li><code>POST .../fields</code> stores field definitions in <code>form_fields</code>.</li>
+      <li><code>POST .../publish</code> calls <code>SchemaService.publishVersion()</code>.</li>
+      <li>System creates/syncs dynamic table <code>form_data_{sanitized_form_name}_{short_uuid}</code>.</li>
+      <li>Version status updated to <code>PUBLISHED</code>, active published version switched, old drafts cleaned.</li>
+    </ol>
+  </div>
+  <div class="flow">
+    <strong>Flow B: Public submit response</strong>
+    <ol>
+      <li><code>GET /api/v1/publish/{formId}/published</code> serves published definition + fields.</li>
+      <li><code>POST /api/v1/publish/{formId}/submit</code> validates status, schema drift, required fields, unique fields, business rules.</li>
+      <li>Submission inserted into dynamic table with metadata (<code>submitted_by</code>, <code>version_id</code>, <code>status</code>, <code>deleted</code>).</li>
+      <li>Response payload includes success message and <code>submissionId</code>.</li>
+    </ol>
+  </div>
+  <div class="flow">
+    <strong>Flow C: Approval-driven action (sub-user)</strong>
+    <ol>
+      <li>User endpoint checks <code>PermissionService</code> and optional <code>requiresApproval()</code>.</li>
+      <li>If approval required, API creates/updates <code>approval_requests(PENDING)</code> and returns <code>202 Accepted</code>.</li>
+      <li>Admin approves/rejects via <code>/api/v1/admin/approvals/{requestId}/approve|reject</code>.</li>
+      <li>On approve, controller executes deferred action (publish/delete/etc.) through service layer.</li>
+    </ol>
+  </div>
+
+  <h2>3) Security Architecture</h2>
+  <h3>Authentication</h3>
+  <ul>
+    <li>Spring Security uses <code>DaoAuthenticationProvider</code> with <code>UserService(UserDetailsService)</code>.</li>
+    <li>Passwords hashed with <code>BCryptPasswordEncoder</code>.</li>
+    <li>Login endpoint authenticates using <code>AuthenticationManager</code> and stores <code>SecurityContext</code> in HTTP session.</li>
+    <li>Session policy: <code>IF_REQUIRED</code>, max concurrent sessions per user = <code>5</code>.</li>
+  </ul>
+
+  <h3>Authorization</h3>
+  <ul>
+    <li>Route-level auth configured in <code>SecurityConfig</code>.</li>
+    <li>Public endpoints: auth register/login, publish endpoints, file endpoints, Swagger docs.</li>
+    <li>All <code>/api/v1/**</code> routes require authenticated session unless explicitly permitted.</li>
+    <li>Controller-level fine-grained checks for USER actions use <code>PermissionService</code> + approval flags.</li>
+  </ul>
+
+  <h3>CORS, CSRF, and Error Entry Points</h3>
+  <ul>
+    <li>CORS allows <code>http://localhost:3000</code>, credentials enabled.</li>
+    <li>CSRF disabled for REST usage with session cookies.</li>
+    <li>Unauthorized response: <code>401</code> JSON <code>{"message":"Unauthorized - Please log in"}</code>.</li>
+    <li>Forbidden response: <code>403</code> JSON <code>{"message":"Forbidden - Insufficient permissions"}</code>.</li>
+  </ul>
+
+  <h2>4) Roles and Permissions Model</h2>
+  <h3>System Roles (Spring Security)</h3>
+  <table>
+    <thead><tr><th>Role Enum</th><th>Meaning</th><th>Authority</th></tr></thead>
+    <tbody>
+      <tr><td><code>ADMIN</code></td><td>Primary admin account and manager of sub-users</td><td><code>ROLE_ADMIN</code></td></tr>
+      <tr><td><code>USER</code></td><td>Sub-user account under an admin</td><td><code>ROLE_USER</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Dynamic AppRole (RBAC overlay)</h3>
+  <ul>
+    <li><code>AppRole</code> stores permission set, approval-required map, module assignments.</li>
+    <li>ADMIN has implicit full permission in <code>PermissionService</code>.</li>
+    <li>USER permissions come from assigned <code>AppRole.permissions</code>.</li>
+  </ul>
+
+  <h3>Permission Catalog</h3>
+  <table>
+    <thead><tr><th>Permission</th><th>What It Governs</th><th>Approval flag supported</th></tr></thead>
+    <tbody>
+      <tr><td><code>CREATE_DRAFT_FORM</code></td><td>Create new draft forms and publish request flow</td><td>Yes</td></tr>
+      <tr><td><code>EDIT_DRAFT_FORM</code></td><td>Edit draft form metadata/fields</td><td>Yes</td></tr>
+      <tr><td><code>EDIT_PUBLISHED_FORM</code></td><td>Edit already published forms/fields</td><td>Yes</td></tr>
+      <tr><td><code>DELETE_DRAFT_FORM</code></td><td>Delete draft forms</td><td>Yes</td></tr>
+      <tr><td><code>DELETE_PUBLISHED_FORM</code></td><td>Delete published forms</td><td>Yes</td></tr>
+      <tr><td><code>VIEW_PUBLISHED_SUBMISSIONS</code></td><td>View submission lists for published forms</td><td>Yes</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Role to Permission Behavior</h3>
+  <table>
+    <thead><tr><th>Actor</th><th>Permission Source</th><th>Approval Needed</th><th>Typical Capability</th></tr></thead>
+    <tbody>
+      <tr><td>ADMIN</td><td>Implicit all permissions</td><td>No</td><td>Direct create/edit/publish/delete and admin management operations</td></tr>
+      <tr><td>USER with AppRole</td><td><code>app_roles.permissions</code></td><td>Configurable per permission via <code>approvalRequiredMap</code></td><td>Controlled authoring, optional approval workflow, limited submission access</td></tr>
+      <tr><td>USER without AppRole</td><td>None</td><td>N/A</td><td>Authenticated but effectively restricted on permission-gated operations</td></tr>
+    </tbody>
+  </table>
+
+  <h2>5) Entity to Database Design</h2>
+  <h3>Core Entity Tables</h3>
+  <table>
+    <thead>
+      <tr><th>Table</th><th>Primary Key</th><th>Main Columns</th><th>Foreign Keys / Relations</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>users</code></td>
+        <td><code>id (UUID)</code></td>
+        <td><code>name</code>, <code>email(unique)</code>, <code>password</code>, <code>role</code>, <code>soft_delete_enabled</code>, <code>theme_config</code>, <code>created_date</code></td>
+        <td><code>app_role_id -> app_roles.id</code>, <code>created_by_admin -> users.id</code></td>
+      </tr>
+      <tr>
+        <td><code>app_roles</code></td>
+        <td><code>id (UUID)</code></td>
+        <td><code>name(unique)</code>, <code>is_system</code>, <code>approval_required_map(TEXT JSON)</code>, <code>created_at</code></td>
+        <td><code>created_by_admin -> users.id</code></td>
+      </tr>
+      <tr>
+        <td><code>app_role_permissions</code></td>
+        <td>Composite</td>
+        <td><code>permission</code></td>
+        <td><code>app_role_id -> app_roles.id</code></td>
+      </tr>
+      <tr>
+        <td><code>modules</code></td>
+        <td><code>id (UUID)</code></td>
+        <td><code>name</code>, <code>route_prefix</code>, <code>description</code>, <code>icon_class</code>, <code>page_link</code>, <code>active_status</code>, <code>is_parent</code>, <code>parent_id</code></td>
+        <td>Parent relation via <code>parent_id</code></td>
+      </tr>
+      <tr>
+        <td><code>app_role_modules</code></td>
+        <td>Composite</td>
+        <td><code>app_role_id</code>, <code>module_id</code></td>
+        <td><code>app_role_id -> app_roles.id</code>, <code>module_id -> modules.id</code></td>
+      </tr>
+      <tr>
+        <td><code>forms</code></td>
+        <td><code>id (UUID)</code></td>
+        <td><code>name</code>, <code>description</code>, <code>one_submission_per_user</code>, <code>unpublish_time</code>, <code>deleted</code>, <code>created_at</code>, <code>updated_at</code></td>
+        <td><code>created_by -> users.id</code></td>
+      </tr>
+      <tr>
+        <td><code>form_versions</code></td>
+        <td><code>id (UUID)</code></td>
+        <td><code>version_number</code>, <code>status</code>, <code>table_name</code>, <code>deleted</code>, <code>is_active</code>, <code>created_at</code>, <code>published_at</code></td>
+        <td><code>form_id -> forms.id</code>, <code>created_by -> users.id</code>; unique(<code>form_id</code>, <code>version_number</code>)</td>
+      </tr>
+      <tr>
+        <td><code>form_fields</code></td>
+        <td><code>id (UUID)</code></td>
+        <td><code>field_key</code>, <code>field_label</code>, <code>field_type</code>, <code>required</code>, <code>field_order</code>, options/validation/source columns, <code>is_unique</code>, <code>is_original</code></td>
+        <td><code>version_id -> form_versions.id</code></td>
+      </tr>
+      <tr>
+        <td><code>form_rules</code></td>
+        <td><code>id (UUID)</code></td>
+        <td>Condition/action columns, <code>priority</code>, <code>enabled</code>, timestamps</td>
+        <td><code>created_by -> users.id</code>; logical relation by <code>form_id</code> (UUID value)</td>
+      </tr>
+      <tr>
+        <td><code>approval_requests</code></td>
+        <td><code>id (UUID)</code></td>
+        <td><code>type</code>, <code>reference_id</code>, <code>description</code>, <code>status</code>, <code>created_at</code>, <code>resolved_at</code>, <code>admin_note</code></td>
+        <td><code>requested_by -> users.id</code>, <code>routed_to_admin -> users.id</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Dynamic Submission Table Design</h3>
+  <div class="note">
+    Dynamic tables are created per form family on publish. Naming pattern: <code>form_data_{sanitized_form_name}_{short_uuid}</code> (lowercased, PostgreSQL name length capped).
+  </div>
+  <table>
+    <thead><tr><th>Column Category</th><th>Columns</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Metadata</td><td><code>id</code>, <code>submitted_at</code>, <code>submitted_by</code>, <code>version_id</code>, <code>status</code>, <code>deleted</code></td><td>Added/maintained by <code>SchemaService</code>.</td></tr>
+      <tr><td>Field columns</td><td>One DB column per form field key (except <code>HEADING</code> and <code>PAGE_BREAK</code>)</td><td>Type mapped through <code>SqlTypeMapper</code>; unique constraints supported per field.</td></tr>
+      <tr><td>Lifecycle</td><td>Created on first publish, then synced</td><td>Missing columns added, required fields backfilled with placeholders.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>6) Complete API Endpoint Catalog</h2>
+  <p><strong>Base:</strong> <code>/api/v1</code>. <strong>Legend:</strong> Auth = Public, SessionAuth, SessionAuth+Permission, SessionAuth+AdminFlow.</p>
+
+  <h3>Auth and User Management (<code>UserController</code>)</h3>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Request</th><th>Response</th></tr></thead>
+    <tbody>
+      <tr><td>POST</td><td><code>/api/v1/admin/auth/register</code>, <code>/api/v1/auth/register</code></td><td>Public</td><td><code>{name,email,password}</code></td><td>User profile map (id/name/email/role)</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/admin/auth/login</code>, <code>/api/v1/auth/login</code></td><td>Public</td><td><code>{email,password}</code></td><td>User map + permissions; creates HTTP session</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/admin/auth/logout</code>, <code>/api/v1/auth/logout</code></td><td>SessionAuth</td><td>None</td><td><code>{message}</code>; invalidates session</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/admin/auth/me</code>, <code>/api/v1/auth/me</code></td><td>SessionAuth</td><td>None</td><td>Current user map + effective permissions</td></tr>
+      <tr><td>PUT</td><td><code>/api/v1/admin/user/settings</code></td><td>SessionAuth</td><td><code>{softDeleteEnabled}</code> or <code>{themeConfig}</code></td><td>Updated settings payload</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/admin/users</code></td><td>SessionAuth (admin-scoped)</td><td>None</td><td>Sub-user list for current admin</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/admin/users</code></td><td>SessionAuth (admin-scoped)</td><td><code>{name,email,password,appRoleId}</code></td><td>Created sub-user summary</td></tr>
+      <tr><td>PUT</td><td><code>/api/v1/admin/users/{id}</code></td><td>SessionAuth (admin-scoped)</td><td><code>{name,email,password?,appRoleId}</code></td><td>Updated sub-user summary</td></tr>
+      <tr><td>PUT</td><td><code>/api/v1/admin/users/{id}/role</code></td><td>SessionAuth (admin-scoped)</td><td><code>{appRoleId}</code></td><td>Role update confirmation</td></tr>
+      <tr><td>DELETE</td><td><code>/api/v1/admin/users/{id}</code></td><td>SessionAuth (admin-scoped)</td><td>None</td><td><code>{message}</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Forms and Submissions (<code>FormController</code>)</h3>
+  <div class="note">Every endpoint below is available under two base aliases: <code>/api/v1/admin/forms</code> and <code>/api/v1/forms</code>.</div>
+  <table>
+    <thead><tr><th>Method</th><th>Path Suffix</th><th>Auth</th><th>Key Behavior</th></tr></thead>
+    <tbody>
+      <tr><td>GET</td><td><code></code> (base)</td><td>SessionAuth</td><td>List active forms visible to current user</td></tr>
+      <tr><td>GET</td><td><code>/trash</code></td><td>SessionAuth</td><td>List soft-deleted forms</td></tr>
+      <tr><td>POST</td><td><code>/{formId}/recover</code></td><td>SessionAuth</td><td>Recover one soft-deleted form</td></tr>
+      <tr><td>DELETE</td><td><code>/{formId}</code></td><td>SessionAuth+Permission/Approval</td><td>Delete form (soft/hard based on user setting)</td></tr>
+      <tr><td>DELETE</td><td><code>/bulk</code></td><td>SessionAuth+Permission/Approval</td><td>Bulk delete forms</td></tr>
+      <tr><td>POST</td><td><code>/bulk/recover</code></td><td>SessionAuth</td><td>Bulk recover forms</td></tr>
+      <tr><td>GET</td><td><code>/stats</code></td><td>SessionAuth</td><td>Dashboard stats + drifted forms list</td></tr>
+      <tr><td>GET</td><td><code>/{formId}</code></td><td>SessionAuth</td><td>Fetch single form metadata</td></tr>
+      <tr><td>POST</td><td><code></code> (base)</td><td>SessionAuth+Permission/Approval</td><td>Create form + draft version</td></tr>
+      <tr><td>PUT</td><td><code>/{formId}</code></td><td>SessionAuth+Permission/Approval</td><td>Update form metadata and constraints</td></tr>
+      <tr><td>GET</td><td><code>/{formId}/fields</code></td><td>SessionAuth</td><td>Get current draft/published fields; drift check if published</td></tr>
+      <tr><td>POST</td><td><code>/{formId}/fields</code></td><td>SessionAuth+Permission/Approval</td><td>Add field with sanitization and guardrails</td></tr>
+      <tr><td>PUT</td><td><code>/{formId}/fields/{fieldId}</code></td><td>SessionAuth</td><td>Update field (works through editable draft)</td></tr>
+      <tr><td>DELETE</td><td><code>/{formId}/fields/{fieldId}</code></td><td>SessionAuth+Permission/Approval</td><td>Delete field from editable draft</td></tr>
+      <tr><td>PUT</td><td><code>/{formId}/fields/reorder</code></td><td>SessionAuth</td><td>Reorder fields by field id/key mapping</td></tr>
+      <tr><td>POST</td><td><code>/{formId}/publish</code></td><td>SessionAuth+Permission/Approval</td><td>Publish immediately (admin) or create approval request (sub-user)</td></tr>
+      <tr><td>GET</td><td><code>/{formId}/submissions</code></td><td>SessionAuth+Permission</td><td>List published submissions</td></tr>
+      <tr><td>GET</td><td><code>/{formId}/export</code></td><td>SessionAuth</td><td>Export submissions as CSV (formula-injection safe)</td></tr>
+      <tr><td>PUT</td><td><code>/{formId}/submissions/{id}</code></td><td>SessionAuth</td><td>Admin-only submission update via this endpoint</td></tr>
+      <tr><td>DELETE</td><td><code>/{formId}/submissions/{id}</code></td><td>SessionAuth</td><td>Delete one submission (soft/hard aware)</td></tr>
+      <tr><td>DELETE</td><td><code>/{formId}/submissions/bulk</code></td><td>SessionAuth</td><td>Bulk delete submissions</td></tr>
+      <tr><td>POST</td><td><code>/{formId}/submissions/bulk/recover</code></td><td>SessionAuth</td><td>Bulk recover submissions</td></tr>
+      <tr><td>GET</td><td><code>/{formId}/submissions/count</code></td><td>SessionAuth</td><td>Submission count for active published version</td></tr>
+      <tr><td>GET</td><td><code>/{formId}/fields/{fieldKey}/options</code></td><td>SessionAuth</td><td>Resolve static or dynamic dropdown options</td></tr>
+      <tr><td>GET</td><td><code>/{formId}/submissions/trash</code></td><td>SessionAuth</td><td>List deleted submissions</td></tr>
+      <tr><td>POST</td><td><code>/{formId}/submissions/{submissionId}/recover</code></td><td>SessionAuth</td><td>Recover one deleted submission</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Public Form APIs (<code>PublicFormController</code>)</h3>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>GET</td><td><code>/api/v1/publish/{formId}/published</code></td><td>Public</td><td>Get published form, fields, submission flags, draft flags</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/publish/{formId}/rules</code></td><td>Public</td><td>Get enabled/ordered rules for published form</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/publish/{formId}/fields/{fieldKey}/options</code></td><td>Public</td><td>Get field options from static JSON or lookup table</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/publish/{formId}/submit</code></td><td>Public or SessionAuth</td><td>Submit form response (draft/completed status supported)</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/publish/{formId}/submissions/{submissionId}</code></td><td>Session-aware ACL</td><td>Get one submission for edit/view</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/publish/{formId}/draft</code></td><td>SessionAuth</td><td>Get current user draft if exists</td></tr>
+      <tr><td>PUT</td><td><code>/api/v1/publish/{formId}/submissions/{submissionId}</code></td><td>Session-aware ACL</td><td>Update submission with validation and drift checks</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/publish/{formId}/status</code></td><td>Public</td><td>Check published/closed/deleted status and share-link state</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Rules APIs (<code>RuleController</code>)</h3>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>GET</td><td><code>/api/v1/admin/forms/{formId}/rules</code></td><td>SessionAuth</td><td>List rules for form</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/admin/forms/{formId}/rules/{ruleId}</code></td><td>SessionAuth</td><td>Get one rule</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/admin/forms/{formId}/rules</code></td><td>SessionAuth</td><td>Create rule (max 100/form)</td></tr>
+      <tr><td>PUT</td><td><code>/api/v1/admin/forms/{formId}/rules/{ruleId}</code></td><td>SessionAuth</td><td>Update rule</td></tr>
+      <tr><td>DELETE</td><td><code>/api/v1/admin/forms/{formId}/rules/{ruleId}</code></td><td>SessionAuth</td><td>Delete rule</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/admin/forms/{formId}/rules/test</code></td><td>SessionAuth</td><td>Evaluate rules against sample payload</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Approvals APIs (<code>ApprovalController</code>)</h3>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>GET</td><td><code>/api/v1/admin/approvals?status=PENDING|ALL</code></td><td>SessionAuth+AdminFlow</td><td>Inbox for routed approvals</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/admin/approvals/my-requests</code></td><td>SessionAuth</td><td>Sub-user: own requests; Admin: handled requests</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/admin/approvals/{requestId}/approve</code></td><td>SessionAuth+AdminFlow</td><td>Approve and execute deferred action</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/admin/approvals/{requestId}/reject</code></td><td>SessionAuth+AdminFlow</td><td>Reject with admin note</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Role and Module APIs</h3>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Controller</th><th>Auth</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>GET</td><td><code>/api/v1/admin/roles</code></td><td>RoleController</td><td>SessionAuth</td><td>List system + admin-owned roles</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/admin/roles</code></td><td>RoleController</td><td>SessionAuth</td><td>Create role with permissions/modules/approval map</td></tr>
+      <tr><td>PUT</td><td><code>/api/v1/admin/roles/{roleId}</code></td><td>RoleController</td><td>SessionAuth</td><td>Update role definition and module assignments</td></tr>
+      <tr><td>DELETE</td><td><code>/api/v1/admin/roles/{roleId}</code></td><td>RoleController</td><td>SessionAuth</td><td>Delete non-system role if not in use</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/modules/my</code></td><td>ModuleController</td><td>SessionAuth</td><td>Fetch active modules for current user role</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/modules/admin/all</code></td><td>ModuleController</td><td>SessionAuth</td><td>List all modules</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/modules/admin</code></td><td>ModuleController</td><td>SessionAuth</td><td>Create module</td></tr>
+      <tr><td>PUT</td><td><code>/api/v1/modules/admin/{id}</code></td><td>ModuleController</td><td>SessionAuth</td><td>Update module</td></tr>
+      <tr><td>DELETE</td><td><code>/api/v1/modules/admin/{id}</code></td><td>ModuleController</td><td>SessionAuth</td><td>Delete module (blocked if children exist)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Metadata, Files, and Legacy Version APIs</h3>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Controller</th><th>Auth</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>GET</td><td><code>/api/v1/admin/metadata/tables</code></td><td>MetadataController</td><td>SessionAuth</td><td>Published submission tables for authenticated user</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/admin/metadata/columns?tableName=...</code></td><td>MetadataController</td><td>SessionAuth</td><td>Column metadata from information_schema</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/files/config</code></td><td>FileController</td><td>Public</td><td>Upload limits config</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/files/upload</code></td><td>FileController</td><td>Public</td><td>Upload file</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/files/download/{fileName}</code></td><td>FileController</td><td>Public</td><td>Secure download with traversal/header protections</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/admin/versions</code></td><td>VersionController</td><td>SessionAuth</td><td>List form versions owned by current user (legacy)</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/admin/versions/{formId}/draft</code></td><td>VersionController</td><td>SessionAuth</td><td>Create draft version (legacy)</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/admin/versions/form/{formId}</code></td><td>VersionController</td><td>SessionAuth</td><td>Get all versions by form</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/admin/versions/{versionId}/activate</code></td><td>VersionController</td><td>SessionAuth</td><td>Activate version (legacy)</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/admin/versions/{versionId}</code></td><td>VersionController</td><td>SessionAuth</td><td>Get one version</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/admin/versions/{versionId}/fields</code></td><td>VersionController</td><td>SessionAuth</td><td>Get fields by version</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/admin/versions/{versionId}/publish</code></td><td>VersionController</td><td>SessionAuth</td><td>Publish version (legacy)</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/admin/versions/{versionId}/submissions</code></td><td>VersionController</td><td>SessionAuth</td><td>Get submissions by version (legacy)</td></tr>
+    </tbody>
+  </table>
+
+  <h2>7) Request and Response Semantics</h2>
+  <h3>Common Successful Patterns</h3>
+  <ul>
+    <li><code>200 OK</code> with JSON object/list for most reads and updates.</li>
+    <li><code>202 Accepted</code> for actions converted into approval requests.</li>
+    <li><code>204 No Content</code> for module delete endpoint.</li>
+    <li><code>200 OK</code> binary <code>text/csv</code> for export endpoint.</li>
+  </ul>
+
+  <h3>Error Flow</h3>
+  <ul>
+    <li><code>GlobalExceptionHandler</code> maps runtime, validation, upload, and schema drift exceptions to structured JSON.</li>
+    <li><code>SchemaDriftException</code> -> <code>409 Conflict</code>.</li>
+    <li>Permission-style messages -> <code>403</code>, not found messages -> <code>404</code>, validation/business -> <code>400</code>.</li>
+    <li>Upload oversize -> <code>413 Payload Too Large</code>.</li>
+  </ul>
+
+  <h2>8) Schema Drift Control and Data Integrity</h2>
+  <ul>
+    <li><code>SchemaDriftService.validateSchema()</code> compares expected field schema vs actual DB table columns/types.</li>
+    <li>Startup health check marks drifted tables and blocks writes for them.</li>
+    <li>Submission/update paths re-check drift before accepting data.</li>
+    <li>Publish path blocks if current active table already drifted.</li>
+  </ul>
+
+  <h2>9) Approval Workflow Details</h2>
+  <table>
+    <thead><tr><th>Approval Type</th><th>Triggered From</th><th>Deferred Action on Approve</th></tr></thead>
+    <tbody>
+      <tr><td><code>CREATE_FORM</code></td><td>Sub-user form creation</td><td>Publish form by admin flow</td></tr>
+      <tr><td><code>PUBLISH_FORM</code></td><td>Sub-user publish request</td><td>Publish target form</td></tr>
+      <tr><td><code>DELETE_DRAFT_FORM</code></td><td>Sub-user delete draft</td><td>Admin executes delete</td></tr>
+      <tr><td><code>DELETE_PUBLISHED_FORM</code></td><td>Sub-user delete published</td><td>Admin executes delete</td></tr>
+      <tr><td><code>EDIT_PUBLISHED_FORM</code></td><td>Sub-user edit published</td><td>No auto-apply; UI/user re-submit after approval</td></tr>
+    </tbody>
+  </table>
+
+  <h2>10) Notable Implementation Notes</h2>
+  <ul>
+    <li>Seed data currently guarantees system role <code>Admin</code>; no automatic seed for system role named <code>User</code> in current code.</li>
+    <li><code>FormController</code> intentionally exposes dual route prefixes for compatibility.</li>
+    <li>Submission soft-delete behavior depends on user setting <code>softDeleteEnabled</code>.</li>
+    <li>File download endpoint contains explicit path-traversal and header-injection hardening.</li>
+  </ul>
+
+</body>
+</html>
+

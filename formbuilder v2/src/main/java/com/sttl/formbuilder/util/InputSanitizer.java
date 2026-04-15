@@ -173,6 +173,7 @@ public class InputSanitizer {
             "ID", "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "CONSTRAINT", "DEFAULT",
             "NULL", "NOT", "AND", "OR", "IN", "LIKE", "BETWEEN", "EXISTS", "HAVING",
             "GROUP", "ORDER", "BY", "LIMIT", "OFFSET", "DISTINCT", "CASE", "WHEN",
-            "THEN", "ELSE", "END", "AS", "ON", "TYPE", "COLUMN", "ROW", "ALL", "ANY"
+            "THEN", "ELSE", "END", "AS", "ON", "TYPE", "COLUMN", "ROW", "ALL", "ANY",
+            "INNER", "LEFT", "RIGHT", "FULL", "SEQUENCE", "USER", "ROLE"
     };
 }

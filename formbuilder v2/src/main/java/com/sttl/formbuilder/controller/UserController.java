@@ -1,5 +1,7 @@
 package com.sttl.formbuilder.controller;
 
+import com.sttl.formbuilder.Enums.Permission;
+import com.sttl.formbuilder.Enums.Role;
 import com.sttl.formbuilder.entity.User;
 import com.sttl.formbuilder.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,9 +18,7 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Map;
-import java.util.List;
+import java.util.*;
 
 @RestController
 @RequiredArgsConstructor
@@ -49,19 +49,18 @@ public class UserController {
             if (password == null || password.length() < 6)
                 return ResponseEntity.badRequest().body(Map.of("message", "Password must be at least 6 characters"));
 
-            com.sttl.formbuilder.Enums.Role role = request.getRequestURI().contains("/admin/")
-                    ? com.sttl.formbuilder.Enums.Role.ADMIN
-                    : com.sttl.formbuilder.Enums.Role.USER;
+            Role role = request.getRequestURI().contains("/admin/")
+                    ? Role.ADMIN : Role.USER;
 
             User user = userService.register(name, email, password, role);
-            java.util.Map<String, Object> response = new java.util.HashMap<>();
+            Map<String, Object> response = new HashMap<>();
             response.put("id", user.getId());
             response.put("name", user.getName());
             response.put("email", user.getEmail());
             response.put("role", user.getRole().name());
             return ResponseEntity.ok(response);
         } catch (RuntimeException e) {
-            java.util.Map<String, String> error = new java.util.HashMap<>();
+            Map<String, String> error = new HashMap<>();
             error.put("message", e.getMessage());
             return ResponseEntity.badRequest().body(error);
         }
@@ -71,6 +70,7 @@ public class UserController {
      * POST /admin/api/auth/login OR /api/auth/login
      * Authenticate and create a session.
      */
+    
     @PostMapping({ "${api.base-path}/admin/auth/login", "${api.base-path}/auth/login" })
     public ResponseEntity<?> login(@RequestBody Map<String, String> body, HttpServletRequest request) {
         String email = body.get("email");
@@ -95,21 +95,21 @@ public class UserController {
         }
     }
 
-    private java.util.Map<String, Object> getUserResponseMap(User user) {
+    private Map<String, Object> getUserResponseMap(User user) {
         // Collect permissions
-        java.util.Set<String> permissions = new java.util.HashSet<>();
-        if (user.getRole() == com.sttl.formbuilder.Enums.Role.ADMIN) {
+        Set<String> permissions = new HashSet<>();
+        if (user.getRole() == Role.ADMIN) {
             // Admins get everything
-            for (com.sttl.formbuilder.Enums.Permission p : com.sttl.formbuilder.Enums.Permission.values()) {
+            for (Permission p : Permission.values()) {
                 permissions.add(p.name());
             }
         } else if (user.getAppRole() != null) {
-            for (com.sttl.formbuilder.Enums.Permission p : user.getAppRole().getPermissions()) {
+            for (Permission p : user.getAppRole().getPermissions()) {
                 permissions.add(p.name());
             }
         }
 
-        java.util.Map<String, Object> response = new java.util.HashMap<>();
+        Map<String, Object> response = new HashMap<>();
         response.put("id", user.getId());
         response.put("name", user.getName());
         response.put("email", user.getEmail());
@@ -148,7 +148,7 @@ public class UserController {
         if (body.containsKey("softDeleteEnabled")) {
             boolean enabled = (boolean) body.get("softDeleteEnabled");
             userService.updateSoftDelete(user.getId(), enabled);
-            java.util.Map<String, Object> response = new java.util.HashMap<>();
+            Map<String, Object> response = new HashMap<>();
             response.put("message", "Settings updated");
             response.put("softDeleteEnabled", enabled);
             return ResponseEntity.ok(response);
@@ -157,12 +157,12 @@ public class UserController {
         if (body.containsKey("themeConfig")) {
             String themeConfig = (String) body.get("themeConfig");
             userService.updateThemeConfig(user.getId(), themeConfig);
-            java.util.Map<String, Object> response = new java.util.HashMap<>();
+            Map<String, Object> response = new HashMap<>();
             response.put("message", "Theme settings updated");
             response.put("themeConfig", themeConfig);
             return ResponseEntity.ok(response);
         }
-        java.util.Map<String, String> errorResponse = new java.util.HashMap<>();
+        Map<String, String> errorResponse = new HashMap<>();
         errorResponse.put("message", "Invalid settings data");
         return ResponseEntity.badRequest().body(errorResponse);
     }
@@ -217,15 +217,15 @@ public class UserController {
                 return ResponseEntity.badRequest().body(Map.of("message", "Missing or invalid fields (password min 6 chars, role required)"));
             }
 
-            User subUser = userService.createSubUser(name, email, password, java.util.UUID.fromString(roleIdStr), adminUser);
-            java.util.Map<String, Object> response = new java.util.HashMap<>();
+            User subUser = userService.createSubUser(name, email, password, UUID.fromString(roleIdStr), adminUser);
+            Map<String, Object> response = new HashMap<>();
             response.put("id", subUser.getId());
             response.put("name", subUser.getName());
             response.put("email", subUser.getEmail());
             response.put("appRole", subUser.getAppRole() != null ? subUser.getAppRole().getName() : null);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            java.util.Map<String, String> error = new java.util.HashMap<>();
+            Map<String, String> error = new HashMap<>();
             error.put("message", e.getMessage());
             return ResponseEntity.badRequest().body(error);
         }
@@ -236,7 +236,7 @@ public class UserController {
      * Admin updates a sub-user's details (name, email, password, appRole).
      */
     @PutMapping("${api.base-path}/admin/users/{id}")
-    public ResponseEntity<?> updateSubUser(@PathVariable java.util.UUID id, @RequestBody Map<String, Object> body, @AuthenticationPrincipal User principal) {
+    public ResponseEntity<?> updateSubUser(@PathVariable UUID id, @RequestBody Map<String, Object> body, @AuthenticationPrincipal User principal) {
         User adminUser = userService.getUserById(principal.getId());
         try {
             String name = (String) body.get("name");
@@ -248,8 +248,8 @@ public class UserController {
                 return ResponseEntity.badRequest().body(Map.of("message", "Missing or invalid fields (name, email, role required)"));
             }
 
-            User subUser = userService.updateSubUserDetails(id, name, email, password, java.util.UUID.fromString(roleIdStr), adminUser);
-            java.util.Map<String, Object> response = new java.util.HashMap<>();
+            User subUser = userService.updateSubUserDetails(id, name, email, password, UUID.fromString(roleIdStr), adminUser);
+            Map<String, Object> response = new HashMap<>();
             response.put("id", subUser.getId());
             response.put("name", subUser.getName());
             response.put("email", subUser.getEmail());
@@ -257,7 +257,7 @@ public class UserController {
             response.put("message", "User updated successfully");
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            java.util.Map<String, String> error = new java.util.HashMap<>();
+            Map<String, String> error = new HashMap<>();
             error.put("message", e.getMessage());
             return ResponseEntity.badRequest().body(error);
         }
@@ -268,20 +268,20 @@ public class UserController {
      * Admin updates a sub-user's AppRole.
      */
     @PutMapping("${api.base-path}/admin/users/{id}/role")
-    public ResponseEntity<?> updateSubUserRole(@PathVariable java.util.UUID id, @RequestBody Map<String, Object> body, @AuthenticationPrincipal User principal) {
+    public ResponseEntity<?> updateSubUserRole(@PathVariable UUID id, @RequestBody Map<String, Object> body, @AuthenticationPrincipal User principal) {
         User adminUser = userService.getUserById(principal.getId());
         try {
             String roleIdStr = (String) body.get("appRoleId");
             if (roleIdStr == null) return ResponseEntity.badRequest().body(Map.of("message", "appRoleId is required"));
 
-            User subUser = userService.updateSubUserRole(id, java.util.UUID.fromString(roleIdStr), adminUser);
-            java.util.Map<String, Object> response = new java.util.HashMap<>();
+            User subUser = userService.updateSubUserRole(id, UUID.fromString(roleIdStr), adminUser);
+            Map<String, Object> response = new HashMap<>();
             response.put("id", subUser.getId());
             response.put("appRole", subUser.getAppRole() != null ? subUser.getAppRole().getName() : null);
             response.put("message", "Role updated successfully");
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            java.util.Map<String, String> error = new java.util.HashMap<>();
+            Map<String, String> error = new HashMap<>();
             error.put("message", e.getMessage());
             return ResponseEntity.badRequest().body(error);
         }
@@ -292,15 +292,15 @@ public class UserController {
      * Admin deletes a sub-user.
      */
     @DeleteMapping("${api.base-path}/admin/users/{id}")
-    public ResponseEntity<?> deleteSubUser(@PathVariable java.util.UUID id, @AuthenticationPrincipal User principal) {
+    public ResponseEntity<?> deleteSubUser(@PathVariable UUID id, @AuthenticationPrincipal User principal) {
         User adminUser = userService.getUserById(principal.getId());
         try {
             userService.deleteSubUser(id, adminUser);
-            java.util.Map<String, String> response = new java.util.HashMap<>();
+            Map<String, String> response = new HashMap<>();
             response.put("message", "User deleted successfully");
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            java.util.Map<String, String> error = new java.util.HashMap<>();
+            Map<String, String> error = new HashMap<>();
             error.put("message", e.getMessage());
             return ResponseEntity.badRequest().body(error);
         }

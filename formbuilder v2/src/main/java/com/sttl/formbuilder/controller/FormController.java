@@ -49,6 +49,7 @@ public class FormController {
         private final ApprovalService approvalService;
         private final com.sttl.formbuilder.service.UserService userService;
         private final ApprovalRequestRepository approvalRequestRepository;
+        private final com.sttl.formbuilder.service.SchemaDriftService schemaDriftService;
 
         public FormController(FormService formService,
                         FormVersionRepository versionRepository,
@@ -59,7 +60,8 @@ public class FormController {
                         PermissionService permissionService,
                         ApprovalService approvalService,
                         com.sttl.formbuilder.service.UserService userService,
-                        ApprovalRequestRepository approvalRequestRepository) {
+                        ApprovalRequestRepository approvalRequestRepository,
+                        com.sttl.formbuilder.service.SchemaDriftService schemaDriftService) {
                 this.formService = formService;
                 this.versionRepository = versionRepository;
                 this.fieldRepository = fieldRepository;
@@ -70,6 +72,7 @@ public class FormController {
                 this.approvalService = approvalService;
                 this.userService = userService;
                 this.approvalRequestRepository = approvalRequestRepository;
+                this.schemaDriftService = schemaDriftService;
         }
 
         // ─── Forms ───────────────────────────────────────────────────────────────
@@ -205,6 +208,10 @@ public class FormController {
                 stats.put("draftVersions", draftVersions);
                 stats.put("publishedVersions", publishedVersions);
                 stats.put("totalSubmissions", totalSubmissions);
+
+                // Add drifted forms check for Admin Dashboard visibility
+                stats.put("driftedForms", schemaService.getDriftedForms());
+
                 return ResponseEntity.ok(stats);
         }
 
@@ -216,7 +223,7 @@ public class FormController {
 
         @PostMapping
         public ResponseEntity<?> createForm(@Valid @RequestBody CreateFormRequest request,
-                        @AuthenticationPrincipal User currentUserPrincipal) {
+                        @AuthenticationPrincipal User currentUserPrincipal) throws Exception{
                 User currentUser = userService.getUserById(currentUserPrincipal.getId());
                 
                 if (currentUser.getRole() == Role.USER) {
@@ -270,8 +277,15 @@ public class FormController {
                 FormVersion version = formService.getDraftVersion(formId)
                                 .or(() -> formService.getPublishedVersion(formId))
                                 .orElseThrow(() -> new RuntimeException("No version found for form " + formId));
-                return ResponseEntity.ok(
-                                fieldRepository.findByVersion_IdOrderByFieldOrder(version.getId()));
+
+                // ─── PRE-LOAD DRIFT CHECK ─────────────────────────────────────
+                List<FormField> fields = fieldRepository.findByVersion_IdOrderByFieldOrder(version.getId());
+                if ("PUBLISHED".equals(version.getStatus())) {
+                    schemaDriftService.validateSchema(version, fields);
+                }
+                // ──────────────────────────────────────────────────────────────
+
+                return ResponseEntity.ok(fields);
         }
 
         @PostMapping("/{formId}/fields")

@@ -6,7 +6,7 @@ import { useApp } from '@/lib/AppContext';
 
 export default function DashboardPage() {
   const { user } = useApp();
-  const [stats, setStats] = useState({ forms: 0, drafts: 0, published: 0, submissions: 0 });
+  const [stats, setStats] = useState({ forms: 0, drafts: 0, published: 0, submissions: 0, driftedForms: [] });
   const [recentForms, setRecentForms] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -27,6 +27,7 @@ export default function DashboardPage() {
           drafts: s.draftVersions ?? 0,
           published: s.publishedVersions ?? 0,
           submissions: s.totalSubmissions ?? 0,
+          driftedForms: s.driftedForms ?? [],
         });
       } catch (e) {
         // ignore
@@ -52,6 +53,26 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {stats.driftedForms?.length > 0 && (
+        <div className="alert alert-danger" style={{ marginBottom: '24px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '1.2rem' }}>⚠️</span>
+            <strong style={{ fontSize: '1.1rem' }}>Critical System Alert: Database Schema Drift Detected</strong>
+          </div>
+          <p style={{ margin: 0 }}>The following forms have been blocked due to manual database changes. Submissions and updates are disabled for these forms to prevent data loss:</p>
+          <ul style={{ margin: '4px 0 0 24px', padding: 0 }}>
+            {stats.driftedForms.map(f => (
+              <li key={f.id}>
+                <Link href={`/forms/${f.id}`} style={{ fontWeight: '600', textDecoration: 'underline' }}>{f.name}</Link> (Table: <code>{f.tableName}</code>)
+              </li>
+            ))}
+          </ul>
+          <p style={{ margin: '4px 0 0 0', fontSize: '0.9rem', opacity: 0.9 }}>
+            <em>Action Required: Please revert physical database changes or contact the system administrator to re-sync the schema.</em>
+          </p>
+        </div>
+      )}
 
       <div className="stats-grid">
         <div className="stat-card">

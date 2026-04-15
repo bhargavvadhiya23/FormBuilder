@@ -8,10 +8,16 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.beans.factory.annotation.Value;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @Value("${spring.servlet.multipart.max-file-size:1MB}")
+    private String maxFileSize;
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
@@ -46,8 +52,18 @@ public class GlobalExceptionHandler {
             "Action type is required",
             "Rule name is required",
             "Maximum of",
-            "A form with this name"
+            "A form with this name",
+            "Database schema drift detected"
     };
+
+    @ExceptionHandler(SchemaDriftException.class)
+    public ResponseEntity<Map<String, String>> handleSchemaDriftException(SchemaDriftException ex) {
+        log.error("Schema drift detected: {}", ex.getMessage());
+        Map<String, String> error = new HashMap<>();
+        error.put("message", ex.getMessage());
+        error.put("error", "Conflict / Schema Drift");
+        return ResponseEntity.status(409).body(error); // 409 Conflict is appropriate for drift
+    }
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, String>> handleRuntimeException(RuntimeException ex) {
@@ -92,6 +108,20 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(400).body(error);
     }
 
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, String>> handleValidationExceptions(MethodArgumentNotValidException ex) {
+        log.error("Validation error: {}", ex.getMessage());
+        Map<String, String> error = new HashMap<>();
+        // Extract the default message from the first field error
+        String firstErrorMessage = ex.getBindingResult().getFieldErrors().stream()
+                .map(org.springframework.validation.FieldError::getDefaultMessage)
+                .findFirst()
+                .orElse("Validation failed");
+        error.put("message", firstErrorMessage);
+        error.put("error", "Bad Request");
+        return ResponseEntity.status(400).body(error);
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException e) {
         log.error("Illegal argument error: {}", e.getMessage());
@@ -99,6 +129,15 @@ public class GlobalExceptionHandler {
         error.put("message", e.getMessage());
         error.put("error", "Bad Request");
         return ResponseEntity.status(400).body(error);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, String>> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex) {
+        log.error("File size limit exceeded: {}", ex.getMessage());
+        Map<String, String> error = new HashMap<>();
+        error.put("message", "File is too large. Maximum allowed size is " + maxFileSize + ".");
+        error.put("error", "Payload Too Large");
+        return ResponseEntity.status(413).body(error);
     }
 
     private String toSafeMessage(String message) {

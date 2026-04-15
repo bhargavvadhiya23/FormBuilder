@@ -23,7 +23,11 @@ export default function CreateFormPage() {
       toast.success('Form created! Now add your questions.');
       router.push(`/forms/${res.data.id}/edit`);
     } catch (e) {
-      toast.error(e.message || 'Failed to create form');
+      const errMsg = e.message || 'Failed to create form';
+      if (errMsg.toLowerCase().includes('name')) {
+        setNameError(errMsg);
+      }
+      toast.error(errMsg);
     } finally {
       setSubmitting(false);
     }

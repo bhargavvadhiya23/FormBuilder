@@ -6,6 +6,7 @@ import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.util.unit.DataSize;
 
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
@@ -20,6 +21,9 @@ import java.util.UUID;
 public class FileService {
 
     private final Path fileStorageLocation;
+    
+    @Value("${spring.servlet.multipart.max-file-size:5MB}")
+    private String maxFileSize;
 
     public FileService(@Value("${file.upload-dir}") String uploadDir) {
         this.fileStorageLocation = Paths.get(uploadDir)
@@ -49,9 +53,9 @@ public class FileService {
             System.out.println("Processing upload for file: " + originalFileName);
 
             // ── Security: File Type and Size Validation ───────────────────────
-            long maxSize = 10 * 1024 * 1024; // 10MB default
+            long maxSize = DataSize.parse(maxFileSize).toBytes();
             if (file.getSize() > maxSize) {
-                throw new RuntimeException("File size exceeds the limit of 10MB");
+                throw new RuntimeException("File size exceeds the limit of " + maxFileSize);
             }
 
             String contentType = file.getContentType();

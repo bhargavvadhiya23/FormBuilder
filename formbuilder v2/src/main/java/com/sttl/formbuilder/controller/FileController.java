@@ -13,6 +13,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.util.unit.DataSize;
 
 @RestController
 @RequestMapping("${api.base-path}/files")
@@ -20,8 +22,19 @@ public class FileController {
 
     private final FileService fileService;
 
+    @Value("${spring.servlet.multipart.max-file-size:5MB}")
+    private String maxFileSize;
+
     public FileController(FileService fileService) {
         this.fileService = fileService;
+    }
+
+    @GetMapping("/config")
+    public ResponseEntity<Map<String, Object>> getUploadConfig() {
+        Map<String, Object> config = new HashMap<>();
+        config.put("maxBytes", DataSize.parse(maxFileSize).toBytes());
+        config.put("maxLabel", maxFileSize);
+        return ResponseEntity.ok(config);
     }
 
     @PostMapping("/upload")

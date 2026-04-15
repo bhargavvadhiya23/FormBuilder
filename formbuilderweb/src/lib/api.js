@@ -129,6 +129,7 @@ export const formsApi = {
     if (dName) url += `?dName=${encodeURIComponent(dName)}`;
     return url;
   },
+  getUploadConfig: () => api.get(`${API_BASE}/files/config`),
 };
 
 export const metadataApi = {
