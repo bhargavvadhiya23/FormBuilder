@@ -54,7 +54,7 @@ class ExpressionEvaluatorTest {
         assertEquals(14.0, (Double) evaluator.evaluate("2 + 3 * 4", context));
         // (2 + 3) * 4 should be 20
         assertEquals(20.0, (Double) evaluator.evaluate("(2 + 3) * 4", context));
-        
+
         // true || false && false should be true (&& higher than ||)
         assertTrue((Boolean) evaluator.evaluate("true || false && false", context));
     }
@@ -113,7 +113,7 @@ class ExpressionEvaluatorTest {
         assertTrue((Boolean) evaluator.evaluate("color in \"red, blue, green\"", context));
         assertFalse((Boolean) evaluator.evaluate("color in \"blue, green\"", context));
         assertTrue((Boolean) evaluator.evaluate("color not_in \"blue, green\"", context));
-        
+
         context.put("color", "RED"); // Case insensitive
         assertTrue((Boolean) evaluator.evaluate("color in \"red, blue\"", context));
     }
@@ -122,12 +122,12 @@ class ExpressionEvaluatorTest {
     void testNumericStringComparisons() {
         Map<String, Object> context = new HashMap<>();
         context.put("age", "5");
-        
+
         // Lexicographically "5" > "18" is TRUE, but numerically it is FALSE
         // Our engine should now prefer numeric comparison if both are strings
         assertFalse((Boolean) evaluator.evaluate("age > \"18\"", context));
         assertTrue((Boolean) evaluator.evaluate("age < \"18\"", context));
-        
+
         context.put("score", "95.5");
         assertTrue((Boolean) evaluator.evaluate("score >= \"90\"", context));
     }
@@ -145,5 +145,20 @@ class ExpressionEvaluatorTest {
         assertTrue((Boolean) evaluator.evaluate("optin == \"yes\"", context));
         assertTrue((Boolean) evaluator.evaluate("flag == \"1\"", context));
         assertTrue((Boolean) evaluator.evaluate("empty == \"\"", context));
+    }
+
+    @Test
+    void testCalculateBetweenFields() {
+        Map<String, Object> context = new HashMap<>();
+        // Simulate form fields submitted by the user
+        context.put("basic_salary", 50000);
+        context.put("bonus", 5000);
+        context.put("tax_deduction", 2000);
+
+        // Simulating the CALCULATE action's expression evaluation
+        Double result = (Double) evaluator.evaluate("(basic_salary + bonus) - tax_deduction", context);
+
+        // Output should be (50000 + 5000) - 2000 = 53000.0
+        assertEquals(53000.0, result);
     }
 }

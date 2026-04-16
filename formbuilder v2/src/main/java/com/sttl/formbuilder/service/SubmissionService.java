@@ -65,7 +65,9 @@ public class SubmissionService {
 
         // ─── DRIFT CHECK ─────────────────────────────────────────────────────
         if (schemaService.isDrifted(version.getTableName())) {
-             throw new com.sttl.formbuilder.exception.SchemaDriftException("Submission blocked: Database schema drift detected in table '" + version.getTableName() + "'. Please contact the administrator.");
+            throw new com.sttl.formbuilder.exception.SchemaDriftException(
+                    "Submission blocked: Database schema drift detected in table '" + version.getTableName()
+                            + "'. Please contact the administrator.");
         }
         // Live check for extra robustness
         List<FormField> expectedFields = fieldRepository.findByVersion_IdOrderByFieldOrder(versionId);
@@ -86,22 +88,23 @@ public class SubmissionService {
             // Only count non-deleted COMPLETED submissions
             String checkSql = "SELECT COUNT(*) FROM \"" + version.getTableName()
                     + "\" WHERE \"submitted_by\" = CAST(? AS UUID) AND \"status\" = 'COMPLETED'";
-            
+
             if (hasColumn(version.getTableName(), "deleted")) {
                 checkSql += " AND \"deleted\" = FALSE";
             }
-            
+
             Integer count = jdbcTemplate.queryForObject(checkSql, Integer.class, userId.toString());
             if (count != null && count > 0) {
                 throw new IllegalArgumentException("You have already submitted this form.");
             }
         }
-        
+
         // ─── Draft Check & Status Handling ──────────────────────────────────
         String status = (String) data.getOrDefault("status", "COMPLETED");
         boolean isDraft = "DRAFT".equals(status);
-        
-        // If a draft exists for this user/version, update it instead of creating a new one
+
+        // If a draft exists for this user/version, update it instead of creating a new
+        // one
         if (userId != null) {
             Long existingId = getUserSubmissionId(versionId, "DRAFT");
             if (existingId != null) {
@@ -147,7 +150,32 @@ public class SubmissionService {
             }
         }
         // Apply any SET_VALUE overrides from rules
-        fact.getUpdatedValues().forEach(cleanedData::put);
+        fact.getUpdatedValues().forEach((key, val) -> {
+            if (val == null || val.trim().isEmpty()) {
+                cleanedData.put(key, null);
+                return;
+            }
+            FormField field = fields.stream().filter(f -> f.getFieldKey().equals(key)).findFirst().orElse(null);
+            if (field != null) {
+                String type = field.getFieldType().toUpperCase();
+                try {
+                    if (List.of("NUMBER", "DECIMAL").contains(type)) {
+                        cleanedData.put(key, new java.math.BigDecimal(val));
+                    } else if (List.of("LINEAR_SCALE", "RATING", "RANGE", "INTEGER").contains(type)) {
+                        String intStr = val.contains(".") ? val.substring(0, val.indexOf('.')) : val;
+                        cleanedData.put(key, Integer.parseInt(intStr));
+                    } else if ("TOGGLE".equals(type)) {
+                        cleanedData.put(key, Boolean.parseBoolean(val));
+                    } else {
+                        cleanedData.put(key, val);
+                    }
+                } catch (Exception e) {
+                    cleanedData.put(key, val);
+                }
+            } else {
+                cleanedData.put(key, val);
+            }
+        });
         // ─────────────────────────────────────────────────────────────────────
 
         List<String> columns = new ArrayList<>(cleanedData.keySet());
@@ -192,7 +220,8 @@ public class SubmissionService {
     }
 
     /**
-     * Retrieves the submission ID for the currently authenticated user for a specific status.
+     * Retrieves the submission ID for the currently authenticated user for a
+     * specific status.
      */
     public Long getUserSubmissionId(UUID versionId, String status) {
         FormVersion version = versionRepository.findById(versionId)
@@ -204,7 +233,8 @@ public class SubmissionService {
             if (tableName == null || tableName.isBlank()) {
                 return null;
             }
-            String sql = "SELECT \"id\" FROM \"" + tableName + "\" WHERE \"submitted_by\" = CAST(? AS UUID) AND \"status\" = ?";
+            String sql = "SELECT \"id\" FROM \"" + tableName
+                    + "\" WHERE \"submitted_by\" = CAST(? AS UUID) AND \"status\" = ?";
             if (hasColumn(tableName, "deleted")) {
                 sql += " AND \"deleted\" = FALSE";
             }
@@ -212,10 +242,12 @@ public class SubmissionService {
 
             try {
                 Long id = jdbcTemplate.queryForObject(sql, Long.class, userDetails.getId().toString(), status);
-                System.out.println("DEBUG: Submission/Draft found for user " + userDetails.getId() + " in table " + tableName + ": " + id);
+                System.out.println("DEBUG: Submission/Draft found for user " + userDetails.getId() + " in table "
+                        + tableName + ": " + id);
                 return id;
             } catch (org.springframework.dao.EmptyResultDataAccessException e) {
-                System.out.println("DEBUG: No submission/draft found for user " + userDetails.getId() + " in table " + tableName + " with status " + status);
+                System.out.println("DEBUG: No submission/draft found for user " + userDetails.getId() + " in table "
+                        + tableName + " with status " + status);
                 return null;
             } catch (Exception e) {
                 System.err.println("ERROR: Failed to lookup submission/draft: " + e.getMessage());
@@ -241,38 +273,48 @@ public class SubmissionService {
     public boolean wasDraftDiscarded(UUID currentVersionId) {
         FormVersion currentVersion = versionRepository.findById(currentVersionId)
                 .orElseThrow(() -> new RuntimeException("Version not found"));
-        
+
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.getPrincipal() instanceof User userDetails) {
             UUID userId = userDetails.getId();
             String tableName = currentVersion.getTableName();
-            if (tableName == null) return false;
+            if (tableName == null)
+                return false;
 
-            // Check if ANY draft exists for this user in this form's table that IS NOT for the current version
+            // Check if ANY draft exists for this user in this form's table that IS NOT for
+            // the current version
             // Wait, if we delete all drafts on publish, this won't find anything.
             // But we only delete them during publishVersion.
-            // If they had a draft on an old version, and it wasn't deleted yet (maybe due to some error), 
+            // If they had a draft on an old version, and it wasn't deleted yet (maybe due
+            // to some error),
             // or if we want to track the "discarded" state, we need a way.
-            
-            // Actually, the requirement "All existing drafts for the previous version shall be dropped"
+
+            // Actually, the requirement "All existing drafts for the previous version shall
+            // be dropped"
             // is handled in SchemaService.
-            
-            // To detect "discarded", we can check if there are NO drafts for current version
-            // BUT there were drafts for this form ID in the past? 
+
+            // To detect "discarded", we can check if there are NO drafts for current
+            // version
+            // BUT there were drafts for this form ID in the past?
             // This is hard to track without a separate log.
-            
+
             // Let's change the approach for "discarded warning":
-            // The frontend can send its last known versionId. If it doesn't match current, show warning.
-            
-            // Or: In SubmissionService, we can keep track of "last seen version" per user/form? No.
-            
-            // Re-reading: "Users must be shown a clear warning indicating that their drafts were discarded..."
+            // The frontend can send its last known versionId. If it doesn't match current,
+            // show warning.
+
+            // Or: In SubmissionService, we can keep track of "last seen version" per
+            // user/form? No.
+
+            // Re-reading: "Users must be shown a clear warning indicating that their drafts
+            // were discarded..."
             // If I delete them on publish, they are gone.
-            
-            // How about if PublicFormController.getPublishedForm checks if the user *would have* had a draft?
-            
+
+            // How about if PublicFormController.getPublishedForm checks if the user *would
+            // have* had a draft?
+
             // Let's just implement the deletion and the inactive checks first.
-            // For the warning, I'll add a flag to the response if a draft was found for an old version.
+            // For the warning, I'll add a flag to the response if a draft was found for an
+            // old version.
         }
         return false;
     }
@@ -327,7 +369,9 @@ public class SubmissionService {
 
         // ─── DRIFT CHECK ─────────────────────────────────────────────────────
         if (schemaService.isDrifted(version.getTableName())) {
-             throw new com.sttl.formbuilder.exception.SchemaDriftException("Update blocked: Database schema drift detected in table '" + version.getTableName() + "'. Please contact the administrator.");
+            throw new com.sttl.formbuilder.exception.SchemaDriftException(
+                    "Update blocked: Database schema drift detected in table '" + version.getTableName()
+                            + "'. Please contact the administrator.");
         }
         // Live check for extra robustness
         List<FormField> expectedFields = fieldRepository.findByVersion_IdOrderByFieldOrder(versionId);
@@ -350,7 +394,8 @@ public class SubmissionService {
                 if (Boolean.TRUE.equals(isDeleted)) {
                     throw new IllegalArgumentException("This response has been deleted and cannot be edited.");
                 }
-            } catch (Exception e) { /* ignore or log */ }
+            } catch (Exception e) {
+                /* ignore or log */ }
         }
         // ─────────────────────────────────────────────────────────────────────
 
@@ -404,7 +449,32 @@ public class SubmissionService {
             }
         }
         // Apply any SET_VALUE overrides from rules
-        fact.getUpdatedValues().forEach(cleanedData::put);
+        fact.getUpdatedValues().forEach((key, val) -> {
+            if (val == null || val.trim().isEmpty()) {
+                cleanedData.put(key, null);
+                return;
+            }
+            FormField field = fields.stream().filter(f -> f.getFieldKey().equals(key)).findFirst().orElse(null);
+            if (field != null) {
+                String type = field.getFieldType().toUpperCase();
+                try {
+                    if (List.of("NUMBER", "DECIMAL").contains(type)) {
+                        cleanedData.put(key, new java.math.BigDecimal(val));
+                    } else if (List.of("LINEAR_SCALE", "RATING", "RANGE", "INTEGER").contains(type)) {
+                        String intStr = val.contains(".") ? val.substring(0, val.indexOf('.')) : val;
+                        cleanedData.put(key, Integer.parseInt(intStr));
+                    } else if ("TOGGLE".equals(type)) {
+                        cleanedData.put(key, Boolean.parseBoolean(val));
+                    } else {
+                        cleanedData.put(key, val);
+                    }
+                } catch (Exception e) {
+                    cleanedData.put(key, val);
+                }
+            } else {
+                cleanedData.put(key, val);
+            }
+        });
         // ─────────────────────────────────────────────────────────────────────
 
         StringBuilder sql = new StringBuilder("UPDATE \"" + version.getTableName() + "\" SET ");
@@ -493,7 +563,8 @@ public class SubmissionService {
     /**
      * Internal helper to validate and clean submission data.
      */
-    private Map<String, Object> validateAndCleanData(List<FormField> fields, Map<String, Object> data, boolean isDraft) {
+    private Map<String, Object> validateAndCleanData(List<FormField> fields, Map<String, Object> data,
+            boolean isDraft) {
         Map<String, Object> cleanedData = new HashMap<>();
 
         for (FormField field : fields) {
@@ -511,9 +582,11 @@ public class SubmissionService {
                 }
             }
 
-            if (raw == null) continue;
+            if (raw == null)
+                continue;
             String rawStr = raw.toString().trim();
-            if (rawStr.isEmpty()) continue;
+            if (rawStr.isEmpty())
+                continue;
 
             Object finalValue = switch (fieldType) {
                 case "NUMBER", "DECIMAL" -> validateAndCleanNumber(field, rawStr, isDraft);
@@ -539,20 +612,25 @@ public class SubmissionService {
             if (field.getMinValueStr() != null && !field.getMinValueStr().isBlank()) {
                 BigDecimal minBd = new BigDecimal(field.getMinValueStr());
                 if (numVal.compareTo(minBd) < 0) {
-                    if (isDraft) return null;
-                    throw new IllegalArgumentException("Value for '" + field.getFieldLabel() + "' must be \u2265 " + field.getMinValueStr());
+                    if (isDraft)
+                        return null;
+                    throw new IllegalArgumentException(
+                            "Value for '" + field.getFieldLabel() + "' must be \u2265 " + field.getMinValueStr());
                 }
             }
             if (field.getMaxValueStr() != null && !field.getMaxValueStr().isBlank()) {
                 BigDecimal maxBd = new BigDecimal(field.getMaxValueStr());
                 if (numVal.compareTo(maxBd) > 0) {
-                    if (isDraft) return null;
-                    throw new IllegalArgumentException("Value for '" + field.getFieldLabel() + "' must be \u2264 " + field.getMaxValueStr());
+                    if (isDraft)
+                        return null;
+                    throw new IllegalArgumentException(
+                            "Value for '" + field.getFieldLabel() + "' must be \u2264 " + field.getMaxValueStr());
                 }
             }
             return numVal;
         } catch (NumberFormatException e) {
-            if (isDraft) return null;
+            if (isDraft)
+                return null;
             throw new IllegalArgumentException("Invalid number for field '" + field.getFieldLabel() + "'");
         }
     }
@@ -564,12 +642,15 @@ public class SubmissionService {
             int max = field.getMaxValue() != null ? field.getMaxValue() : (fieldType.equals("RANGE") ? 100 : 5);
 
             if (numVal < min || numVal > max) {
-                if (isDraft) return null;
-                throw new IllegalArgumentException("Value for '" + field.getFieldLabel() + "' must be between " + min + " and " + max);
+                if (isDraft)
+                    return null;
+                throw new IllegalArgumentException(
+                        "Value for '" + field.getFieldLabel() + "' must be between " + min + " and " + max);
             }
             return numVal;
         } catch (NumberFormatException e) {
-            if (isDraft) return null;
+            if (isDraft)
+                return null;
             throw new IllegalArgumentException("Invalid value for field '" + field.getFieldLabel() + "'");
         }
     }
@@ -578,7 +659,8 @@ public class SubmissionService {
         try {
             return Integer.parseInt(rawStr);
         } catch (NumberFormatException e) {
-            if (isDraft) return null;
+            if (isDraft)
+                return null;
             throw new IllegalArgumentException("Invalid integer for field '" + field.getFieldLabel() + "'");
         }
     }
@@ -586,10 +668,12 @@ public class SubmissionService {
     private Object validateAndCleanGrid(FormField field, String fieldType, String rawStr, boolean isDraft) {
         try {
             ObjectMapper mapper = new ObjectMapper();
-            Map<String, Object> gridData = mapper.readValue(rawStr, new TypeReference<Map<String, Object>>() {});
+            Map<String, Object> gridData = mapper.readValue(rawStr, new TypeReference<Map<String, Object>>() {
+            });
             Map<String, List<String>> definition;
             try {
-                definition = mapper.readValue(field.getOptions(), new TypeReference<Map<String, List<String>>>() {});
+                definition = mapper.readValue(field.getOptions(), new TypeReference<Map<String, List<String>>>() {
+                });
             } catch (Exception e) {
                 definition = Map.of("rows", List.of("Row 1"), "columns", List.of("Column 1"));
             }
@@ -600,23 +684,29 @@ public class SubmissionService {
             for (Map.Entry<String, Object> entry : gridData.entrySet()) {
                 String row = entry.getKey();
                 if (!allowedRows.contains(row)) {
-                    if (isDraft) continue;
-                    throw new IllegalArgumentException("Invalid row '" + row + "' in grid '" + field.getFieldLabel() + "'");
+                    if (isDraft)
+                        continue;
+                    throw new IllegalArgumentException(
+                            "Invalid row '" + row + "' in grid '" + field.getFieldLabel() + "'");
                 }
                 Object selection = entry.getValue();
-                if (selection == null) continue;
+                if (selection == null)
+                    continue;
 
                 if (fieldType.equals("MC_GRID")) {
                     String col = selection.toString();
                     if (!col.isEmpty() && !allowedCols.contains(col)) {
-                        if (isDraft) continue;
+                        if (isDraft)
+                            continue;
                         throw new IllegalArgumentException("Invalid selection '" + col + "' for row '" + row + "'");
                     }
                 } else {
-                    List<String> selectedCols = selection instanceof List ? (List<String>) selection : List.of(selection.toString());
+                    List<String> selectedCols = selection instanceof List ? (List<String>) selection
+                            : List.of(selection.toString());
                     for (String col : selectedCols) {
                         if (!allowedCols.contains(col)) {
-                            if (isDraft) continue;
+                            if (isDraft)
+                                continue;
                             throw new IllegalArgumentException("Invalid selection '" + col + "' for row '" + row + "'");
                         }
                     }
@@ -624,20 +714,28 @@ public class SubmissionService {
             }
             return rawStr;
         } catch (Exception e) {
-            if (isDraft) return null;
-            throw new IllegalArgumentException("Invalid format for grid field '" + field.getFieldLabel() + "': " + e.getMessage());
+            if (isDraft)
+                return null;
+            throw new IllegalArgumentException(
+                    "Invalid format for grid field '" + field.getFieldLabel() + "': " + e.getMessage());
         }
     }
 
     private Object validateAndCleanDateTime(FormField field, String rawStr, boolean isDraft) {
         String sanitized = InputSanitizer.sanitizeText(rawStr, 50);
-        if (field.getMinValueStr() != null && !field.getMinValueStr().isBlank() && sanitized.compareTo(field.getMinValueStr()) < 0) {
-            if (isDraft) return null;
-            throw new IllegalArgumentException("Value for '" + field.getFieldLabel() + "' must be on or after " + field.getMinValueStr());
+        if (field.getMinValueStr() != null && !field.getMinValueStr().isBlank()
+                && sanitized.compareTo(field.getMinValueStr()) < 0) {
+            if (isDraft)
+                return null;
+            throw new IllegalArgumentException(
+                    "Value for '" + field.getFieldLabel() + "' must be on or after " + field.getMinValueStr());
         }
-        if (field.getMaxValueStr() != null && !field.getMaxValueStr().isBlank() && sanitized.compareTo(field.getMaxValueStr()) > 0) {
-            if (isDraft) return null;
-            throw new IllegalArgumentException("Value for '" + field.getFieldLabel() + "' must be on or before " + field.getMaxValueStr());
+        if (field.getMaxValueStr() != null && !field.getMaxValueStr().isBlank()
+                && sanitized.compareTo(field.getMaxValueStr()) > 0) {
+            if (isDraft)
+                return null;
+            throw new IllegalArgumentException(
+                    "Value for '" + field.getFieldLabel() + "' must be on or before " + field.getMaxValueStr());
         }
         return sanitized;
     }
@@ -647,7 +745,9 @@ public class SubmissionService {
         if (field.getAllowedFileTypes() != null && !field.getAllowedFileTypes().isBlank()) {
             String[] allowedCats = field.getAllowedFileTypes().split(",");
             String originalName = sanitized.contains("|") ? sanitized.split("\\|")[0] : sanitized;
-            String ext = originalName.contains(".") ? originalName.substring(originalName.lastIndexOf(".")).toLowerCase() : "";
+            String ext = originalName.contains(".")
+                    ? originalName.substring(originalName.lastIndexOf(".")).toLowerCase()
+                    : "";
 
             Map<String, List<String>> catMap = Map.of(
                     "IMAGE", List.of(".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"),
@@ -657,8 +757,7 @@ public class SubmissionService {
                     "CSV", List.of(".csv"),
                     "DOC", List.of(".doc", ".docx"),
                     "TEXT", List.of(".txt"),
-                    "ZIP", List.of(".zip", ".rar", ".7z")
-            );
+                    "ZIP", List.of(".zip", ".rar", ".7z"));
 
             boolean isAllowed = false;
             for (String cat : allowedCats) {
@@ -669,8 +768,10 @@ public class SubmissionService {
                 }
             }
             if (!isAllowed) {
-                if (isDraft) return null;
-                throw new RuntimeException("File type not allowed for field '" + field.getFieldLabel() + "'. Allowed: " + field.getAllowedFileTypes());
+                if (isDraft)
+                    return null;
+                throw new RuntimeException("File type not allowed for field '" + field.getFieldLabel() + "'. Allowed: "
+                        + field.getAllowedFileTypes());
             }
         }
         return sanitized;
@@ -678,26 +779,35 @@ public class SubmissionService {
 
     private Object validateAndCleanText(FormField field, String fieldType, String rawStr, boolean isDraft) {
         String sanitized = InputSanitizer.sanitizeText(rawStr, 5000);
-        if (sanitized == null || sanitized.isEmpty()) return null;
+        if (sanitized == null || sanitized.isEmpty())
+            return null;
 
-        if (!Boolean.FALSE.equals(field.getTrimWhitespace())) sanitized = sanitized.strip();
-        if (!Boolean.FALSE.equals(field.getRemoveExtraSpaces())) sanitized = sanitized.replaceAll("\\s+", " ");
-        if (sanitized.isEmpty()) return null;
+        if (!Boolean.FALSE.equals(field.getTrimWhitespace()))
+            sanitized = sanitized.strip();
+        if (!Boolean.FALSE.equals(field.getRemoveExtraSpaces()))
+            sanitized = sanitized.replaceAll("\\s+", " ");
+        if (sanitized.isEmpty())
+            return null;
 
         if (field.getMinLength() != null && sanitized.length() < field.getMinLength()) {
-            if (isDraft) return null;
-            throw new RuntimeException("Value for '" + field.getFieldLabel() + "' must be at least " + field.getMinLength() + " characters");
+            if (isDraft)
+                return null;
+            throw new RuntimeException("Value for '" + field.getFieldLabel() + "' must be at least "
+                    + field.getMinLength() + " characters");
         }
         if (field.getMaxLength() != null && sanitized.length() > field.getMaxLength()) {
-            if (isDraft) return null;
-            throw new RuntimeException("Value for '" + field.getFieldLabel() + "' must be at most " + field.getMaxLength() + " characters");
+            if (isDraft)
+                return null;
+            throw new RuntimeException("Value for '" + field.getFieldLabel() + "' must be at most "
+                    + field.getMaxLength() + " characters");
         }
 
         if (List.of("DROPDOWN", "MULTIPLE_CHOICE", "CHECKBOXES").contains(fieldType)) {
             try {
                 validateChoices(field, sanitized);
             } catch (Exception e) {
-                if (isDraft) return null;
+                if (isDraft)
+                    return null;
                 throw e;
             }
         }
@@ -706,26 +816,33 @@ public class SubmissionService {
             try {
                 validateCharType(field, sanitized);
             } catch (Exception e) {
-                if (isDraft) return null;
+                if (isDraft)
+                    return null;
                 throw e;
             }
-            if (Boolean.FALSE.equals(field.getAllowSpecialChars()) && java.util.regex.Pattern.compile("[^\\w\\s]").matcher(sanitized).find()) {
-                if (isDraft) return null;
-                throw new RuntimeException("Value for '" + field.getFieldLabel() + "' must not contain special characters");
+            if (Boolean.FALSE.equals(field.getAllowSpecialChars())
+                    && java.util.regex.Pattern.compile("[^\\w\\s]").matcher(sanitized).find()) {
+                if (isDraft)
+                    return null;
+                throw new RuntimeException(
+                        "Value for '" + field.getFieldLabel() + "' must not contain special characters");
             }
         }
 
         if (field.getCustomRegex() != null && !field.getCustomRegex().isBlank()) {
             if (!java.util.regex.Pattern.compile(field.getCustomRegex()).matcher(sanitized).matches()) {
-                if (isDraft) return null;
-                throw new RuntimeException("Value for '" + field.getFieldLabel() + "' does not match the required pattern.");
+                if (isDraft)
+                    return null;
+                throw new RuntimeException(
+                        "Value for '" + field.getFieldLabel() + "' does not match the required pattern.");
             }
         }
         return sanitized;
     }
 
     private void validateCharType(FormField field, String sanitized) {
-        if (field.getCharType() == null || field.getCharType().isBlank()) return;
+        if (field.getCharType() == null || field.getCharType().isBlank())
+            return;
         java.util.regex.Pattern pattern = switch (field.getCharType().toUpperCase()) {
             case "LETTERS" -> java.util.regex.Pattern.compile("^[\\p{L} ]*$");
             case "NUMBERS" -> java.util.regex.Pattern.compile("^[\\d ]*$");
@@ -775,11 +892,11 @@ public class SubmissionService {
                 String column = field.getDataSourceColumn();
                 String alias = "d" + (++dynamicCount);
                 sql.append(", COALESCE(CAST(").append(alias).append(".\"").append(column)
-                   .append("\" AS VARCHAR), s.\"").append(key).append("\") as \"").append(key).append("\" ");
+                        .append("\" AS VARCHAR), s.\"").append(key).append("\") as \"").append(key).append("\" ");
                 sql.append(", s.\"").append(key).append("\" as \"").append(key).append("_raw\" ");
 
                 joins.append(" LEFT JOIN \"").append(field.getDataSourceTable()).append("\" ").append(alias)
-                     .append(" ON s.\"").append(key).append("\" = CAST(").append(alias).append(".id AS VARCHAR) ");
+                        .append(" ON s.\"").append(key).append("\" = CAST(").append(alias).append(".id AS VARCHAR) ");
             } else {
                 sql.append(", s.\"").append(key).append("\" ");
             }
@@ -830,7 +947,9 @@ public class SubmissionService {
             return 0;
 
         String tableName = version.getTableName();
-        return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM \"" + tableName + "\" WHERE \"version_id\" = CAST(? AS UUID)", Integer.class, versionId.toString());
+        return jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM \"" + tableName + "\" WHERE \"version_id\" = CAST(? AS UUID)", Integer.class,
+                versionId.toString());
     }
 
     /**
@@ -847,7 +966,7 @@ public class SubmissionService {
                 try {
                     Integer count = jdbcTemplate.queryForObject(
                             "SELECT COUNT(*) FROM \"" + tableName + "\" WHERE \"version_id\" = CAST(? AS UUID)",
-                             Integer.class, version.getId().toString());
+                            Integer.class, version.getId().toString());
                     if (count != null)
                         total += count;
                 } catch (Exception e) {
